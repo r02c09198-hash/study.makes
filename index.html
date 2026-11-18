@@ -1,0 +1,2531 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ロイロノート</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Noto+Sans+JP:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --bg-base: #121215;
+      --bg-card: #1c1c20;
+      --bg-elevated: #242429;
+      --border-subtle: #2e2e34;
+      --border-focus: #6366f1;
+      --text-primary: #f3f4f6;
+      --text-secondary: #9ca3af;
+      --accent-primary: #6366f1;
+      --accent-hover: #4f46e5;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    html, body {
+      height: 100%;
+      margin: 0;
+      padding: 0;
+      background-color: var(--bg-base);
+      color: var(--text-primary);
+      font-family: 'Inter', 'Noto Sans JP', -apple-system, BlinkMacSystemFont, sans-serif;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    .app-card {
+      background-color: var(--bg-card);
+      border: 1px solid var(--border-subtle);
+    }
+
+    .app-input {
+      background-color: var(--bg-base);
+      border: 1px solid var(--border-subtle);
+      color: var(--text-primary);
+      transition: border-color 0.18s ease, box-shadow 0.18s ease;
+    }
+
+    .app-input:focus {
+      outline: none;
+      border-color: var(--border-focus);
+      box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.18);
+    }
+
+    .app-input::placeholder {
+      color: #6b7280;
+    }
+
+    ::-webkit-scrollbar {
+      width: 5px;
+      height: 5px;
+    }
+    ::-webkit-scrollbar-track {
+      background: transparent;
+    }
+    ::-webkit-scrollbar-thumb {
+      background: rgba(113, 113, 122, 0.45);
+      border-radius: 9999px;
+    }
+    ::-webkit-scrollbar-thumb:hover {
+      background: rgba(113, 113, 122, 0.7);
+    }
+
+    @keyframes shake {
+      0%, 100% { transform: translateX(0); }
+      20%, 60% { transform: translateX(-6px); }
+      40%, 80% { transform: translateX(6px); }
+    }
+    .animate-shake {
+      animation: shake 0.32s ease-in-out;
+    }
+
+    @keyframes slideInRight {
+      from {
+        opacity: 0;
+        transform: translateX(20px);
+      }
+      to {
+        opacity: 1;
+        transform: translateX(0);
+      }
+    }
+    .toast-enter {
+      animation: slideInRight 0.25s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+    }
+
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(4px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+    .fade-in {
+      animation: fadeIn 0.18s ease-out forwards;
+    }
+
+    #roomBgLayer {
+      background-color: #121215;
+      background-size: cover;
+      background-position: center;
+      background-repeat: no-repeat;
+      transition: background 0.25s ease;
+    }
+  </style>
+</head>
+<body class="overflow-hidden select-none sm:select-auto">
+
+  <!-- =========================================================
+       強制移動中オーバーレイ（防御モード / タブ移動時自動リダイレクト）
+       ========================================================= -->
+  <div id="defenseRedirectOverlay" class="hidden fixed inset-0 z-[100] bg-[#121215] flex flex-col items-center justify-center p-6 text-center">
+    <div class="w-10 h-10 rounded-full border-2 border-[#2e2e34] border-t-indigo-500 animate-spin mb-4"></div>
+    <p id="redirectOverlayText" class="text-sm font-semibold text-gray-200">ページを移動しています...</p>
+    <a id="redirectOverlayLink" href="https://loilonote.app/_/" class="mt-3 text-xs text-indigo-400 underline">自動的に切り替わらない場合はこちら</a>
+  </div>
+
+  <!-- =========================================================
+       右上トースト通知コンテナ
+       ========================================================= -->
+  <div id="toastContainer" class="fixed top-4 right-4 z-50 flex flex-col gap-2 max-w-xs sm:max-w-sm w-[calc(100vw-2rem)] pointer-events-none"></div>
+
+  <!-- =========================================================
+       初期認証チェック中ローディング画面
+       ========================================================= -->
+  <div id="bootLoader" class="fixed inset-0 z-40 flex flex-col items-center justify-center bg-[#121215] px-4">
+    <div class="w-10 h-10 rounded-full border-2 border-[#2e2e34] border-t-indigo-500 animate-spin mb-4"></div>
+    <p class="text-sm text-gray-400 tracking-wide">ロイロノートに接続しています...</p>
+  </div>
+
+  <!-- =========================================================
+       1. ログイン画面
+       ========================================================= -->
+  <div id="loginScreen" class="hidden fixed inset-0 z-30 flex items-center justify-center bg-[#121215] px-4 overflow-y-auto">
+    <div id="loginCard" class="app-card w-full max-w-md rounded-2xl p-7 sm:p-8 shadow-2xl my-auto">
+      <div class="flex items-center justify-end mb-2">
+        <button
+          type="button"
+          id="loginOpenSettingsBtn"
+          class="rounded-lg px-2.5 py-1 text-[11px] font-semibold bg-[#242429] hover:bg-[#2e2e34] border border-[#2e2e34] text-gray-200 flex items-center gap-1 cursor-pointer transition-colors"
+        >
+          <span>⚙️</span>
+          <span>設定</span>
+          <span id="loginSettingsActiveDot" class="hidden w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
+        </button>
+      </div>
+
+      <div class="flex flex-col items-center text-center mb-6">
+        <div class="w-12 h-12 rounded-xl bg-indigo-500/15 border border-indigo-400/30 flex items-center justify-center mb-4 shadow-inner">
+          <svg class="w-6 h-6 text-indigo-400" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
+          </svg>
+        </div>
+        <h1 class="text-xl font-bold text-gray-100 tracking-tight">ロイロノート</h1>
+        <p id="loginSubtitle" class="text-xs text-gray-400 mt-1.5">表示名とログインコードを入力して入室してください</p>
+      </div>
+
+      <!-- 一度ログイン済みのユーザー向け表示 -->
+      <div id="returningUserBanner" class="hidden mb-4 rounded-xl bg-[#242429] border border-[#2e2e34] px-3.5 py-2.5 flex items-center justify-between gap-2">
+        <div class="min-w-0">
+          <div class="text-xs font-semibold text-gray-200 truncate">おかえりなさい、<span id="returningUserNameText" class="text-indigo-300"></span> さん</div>
+          <div class="text-[11px] text-gray-400 mt-0.5">名前の入力は省略されています</div>
+        </div>
+        <button
+          type="button"
+          id="changeSavedNameBtn"
+          class="text-[11px] text-indigo-400 hover:text-indigo-300 underline shrink-0 cursor-pointer"
+        >
+          別の名前でログイン
+        </button>
+      </div>
+
+      <form id="loginForm" class="space-y-4" autocomplete="off">
+        <div id="nameFieldWrapper">
+          <label for="displayNameInput" class="block text-xs font-medium text-gray-300 mb-1.5">表示名（名前）</label>
+          <input
+            type="text"
+            id="displayNameInput"
+            maxlength="24"
+            placeholder="例：アキラ"
+            class="app-input w-full rounded-xl px-3.5 py-3 text-sm"
+            required
+          />
+        </div>
+
+        <div>
+          <label for="loginCodeInput" class="block text-xs font-medium text-gray-300 mb-1.5">ログインコード</label>
+          <div class="relative">
+            <input
+              type="password"
+              id="loginCodeInput"
+              placeholder="ログインコードを入力"
+              class="app-input w-full rounded-xl px-3.5 py-3 pr-14 text-sm"
+              required
+            />
+            <button
+              type="button"
+              id="toggleLoginCodeBtn"
+              class="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-gray-400 hover:text-gray-200 px-1.5 py-1 rounded cursor-pointer"
+            >
+              表示
+            </button>
+          </div>
+        </div>
+
+        <div id="loginErrorBox" class="hidden rounded-xl bg-red-500/10 border border-red-500/30 px-3.5 py-2.5 text-xs text-red-300 flex items-center gap-2">
+          <svg class="w-4 h-4 shrink-0 text-red-400" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v2m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+          </svg>
+          <span id="loginErrorText"></span>
+        </div>
+
+        <button
+          type="submit"
+          class="w-full rounded-xl bg-indigo-600 hover:bg-indigo-500 active:bg-indigo-700 text-white font-semibold text-sm py-3 transition-colors shadow-lg shadow-indigo-950/40 cursor-pointer mt-1"
+        >
+          ログイン
+        </button>
+
+        <div class="pt-1 text-center">
+          <button
+            type="button"
+            id="loginStealthLaunchBtn"
+            class="text-[11px] text-indigo-400 hover:text-indigo-300 underline cursor-pointer"
+          >
+            🕵️ ブラウザ履歴に残さない窓（about:blank）で開く
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- =========================================================
+       2. メイン画面（ロイロノート）
+       ========================================================= -->
+  <div id="mainRoom" class="hidden h-full flex flex-col relative">
+    <!-- カスタム可能背景レイヤー -->
+    <div id="roomBgLayer" class="fixed inset-0 z-0 pointer-events-none"></div>
+    <div id="roomBgDimmer" class="fixed inset-0 z-0 pointer-events-none bg-black/0 transition-colors duration-200"></div>
+
+    <!-- ヘッダー -->
+    <header class="bg-[#1c1c20]/95 backdrop-blur-md border-b border-[#2e2e34] px-3 sm:px-5 py-2.5 flex items-center justify-between gap-2 shrink-0 z-10">
+      <div class="flex items-center gap-2.5 min-w-0">
+        <div class="w-8 h-8 rounded-lg bg-indigo-500/15 border border-indigo-400/30 flex items-center justify-center shrink-0">
+          <svg class="w-4 h-4 text-indigo-400" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
+          </svg>
+        </div>
+        <div class="min-w-0">
+          <div class="flex items-center gap-1.5 flex-wrap">
+            <h2 class="text-xs sm:text-sm font-bold text-gray-100 truncate">ロイロノート</h2>
+            <!-- 現在のアクティブ数ボタン（全員タップしてメンバー表示可能） -->
+            <button
+              type="button"
+              id="activeUsersBtn"
+              title="タップして現在アクティブなメンバーを表示"
+              class="inline-flex items-center gap-1 text-[10px] sm:text-[11px] font-semibold px-2 py-0.5 rounded-full bg-emerald-500/15 hover:bg-emerald-500/25 border border-emerald-500/35 text-emerald-300 transition-colors shrink-0 cursor-pointer"
+            >
+              <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
+              <span>アクティブ: <strong id="activeCountNum">1</strong>人</span>
+              <span class="text-[9px] text-emerald-200/80">▾</span>
+            </button>
+          </div>
+          <div class="flex items-center gap-1.5 text-[11px] text-gray-400 mt-0.5 truncate">
+            <span>入室中: <strong id="headerUserName" class="text-gray-200 font-semibold"></strong></span>
+            <span id="headerRoleBadge" class="inline-flex items-center px-1.5 py-0.2 rounded text-[10px] font-medium bg-[#242429] border border-[#2e2e34] text-gray-300">一般</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- 右上コントロール：統合「⚙️ 設定」ボタン ＋ 防御モード（管理者）＋ 管理者コード / パネル -->
+      <div class="flex items-center gap-1.5 shrink-0">
+        <button
+          type="button"
+          id="openUnifiedSettingsBtn"
+          title="タブ移動自動リダイレクト・履歴・背景の設定"
+          class="rounded-lg px-2.5 sm:px-3 py-1.5 text-[11px] sm:text-xs font-semibold transition-all flex items-center gap-1.5 cursor-pointer bg-[#242429] hover:bg-[#2c2c33] border border-[#2e2e34] text-gray-200"
+        >
+          <span>⚙️</span>
+          <span>設定</span>
+          <span id="headerSettingsBadge" class="hidden text-[10px] px-1.5 py-0.2 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 font-bold">ON</span>
+        </button>
+
+        <button
+          type="button"
+          id="headerDefenseBtn"
+          title="防御モード：https://loilonote.app/_/ に強制移動します"
+          class="hidden rounded-lg px-2.5 py-1.5 text-[11px] sm:text-xs font-semibold transition-all flex items-center gap-1 cursor-pointer bg-amber-500/15 hover:bg-amber-500/25 border border-amber-400/40 text-amber-200"
+        >
+          <span>🛡️</span>
+          <span class="hidden md:inline">防御モード</span>
+        </button>
+
+        <button
+          type="button"
+          id="adminActionBtn"
+          class="rounded-lg px-2.5 sm:px-3 py-1.5 text-[11px] sm:text-xs font-semibold transition-all flex items-center gap-1.5 cursor-pointer bg-[#242429] hover:bg-[#2c2c33] border border-[#2e2e34] text-gray-200"
+        >
+          <svg id="adminBtnIcon" class="w-3.5 h-3.5 text-gray-400" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z" />
+          </svg>
+          <span id="adminBtnLabel">管理者コード</span>
+        </button>
+      </div>
+    </header>
+
+    <!-- 保護機能稼働中ステータスバー（タブ移動自動リダイレクト ON / 履歴に残さないモード ON） -->
+    <div id="protectionStatusBar" class="hidden relative z-10 bg-emerald-950/90 backdrop-blur-md border-b border-emerald-500/40 px-3 sm:px-5 py-1.5 shrink-0 fade-in">
+      <div class="max-w-3xl mx-auto flex items-center justify-between gap-2 flex-wrap">
+        <div class="flex items-center gap-1.5 text-[11px] text-emerald-100 flex-wrap">
+          <span id="statusTagTabRedirect" class="hidden px-1.5 py-0.2 rounded bg-indigo-500/30 border border-indigo-400/40 font-bold text-indigo-100">🔄 タブ移動時 ed-cl.com へ自動移動 ON</span>
+          <span id="statusTagNoHistory" class="hidden px-1.5 py-0.2 rounded bg-emerald-500/25 border border-emerald-400/40 font-bold text-emerald-100">🕵️ 履歴に残さないモード ON</span>
+        </div>
+        <div class="flex items-center gap-1.5">
+          <button
+            type="button"
+            id="barOpenSettingsBtn"
+            class="rounded-md px-2 py-0.5 text-[10px] font-semibold bg-[#1c1c20] hover:bg-[#28282e] border border-emerald-500/35 text-emerald-200 cursor-pointer"
+          >
+            設定変更
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 管理者向け：全体防御モード稼働中ステータスバー -->
+    <div id="adminGlobalDefenseStatusBar" class="hidden relative z-10 bg-red-950/90 backdrop-blur-md border-b border-red-500/45 px-3 sm:px-5 py-2 shrink-0 fade-in">
+      <div class="max-w-3xl mx-auto flex items-center justify-between gap-2 flex-wrap">
+        <div class="flex items-center gap-2 text-[11px] text-red-100">
+          <span class="px-1.5 py-0.5 rounded bg-red-500/30 border border-red-400/40 font-bold">🛡️ 全体防御モード稼働中</span>
+          <span>一般ユーザーを <code class="font-mono underline">https://loilonote.app/_/</code> へ強制移動中</span>
+        </div>
+        <div class="flex items-center gap-1.5">
+          <button
+            type="button"
+            id="quickRedirectSelfBtn"
+            class="rounded-md px-2 py-1 text-[10px] font-semibold bg-[#1c1c20] hover:bg-[#28282e] border border-[#3a3a42] text-gray-200 cursor-pointer"
+          >
+            自分も移動
+          </button>
+          <button
+            type="button"
+            id="quickDisableGlobalDefenseBtn"
+            class="rounded-md px-2 py-1 text-[10px] font-semibold bg-red-600 hover:bg-red-500 text-white cursor-pointer"
+          >
+            解除（OFF）
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 上部お知らせバナー（ログイン時ポータル案内 ＆ 管理者全体通知） -->
+    <div id="globalBanner" class="hidden relative z-10 bg-gradient-to-r from-indigo-950/90 via-[#1f1f2b]/95 to-indigo-950/90 backdrop-blur-md border-b border-indigo-500/40 px-3 sm:px-5 py-2 shrink-0 fade-in">
+      <div class="max-w-3xl mx-auto flex items-center justify-between gap-2">
+        <div class="flex items-center gap-2 min-w-0 flex-1">
+          <span id="bannerBadgeText" class="text-[10px] font-bold px-1.5 py-0.5 rounded bg-indigo-500/25 text-indigo-200 border border-indigo-400/30 shrink-0">お知らせ</span>
+          <div id="bannerBody" class="text-xs font-medium text-white truncate"></div>
+          <span id="bannerMeta" class="text-[10px] text-indigo-300/80 shrink-0 hidden sm:inline"></span>
+        </div>
+        <button
+          type="button"
+          id="dismissBannerBtn"
+          title="バナーを閉じる"
+          class="text-xs text-indigo-300/80 hover:text-white px-1.5 py-0.5 rounded hover:bg-white/10 shrink-0 cursor-pointer"
+        >
+          ✕
+        </button>
+      </div>
+    </div>
+
+    <!-- メッセージタイムライン（コンパクト設計） -->
+    <main id="messageTimeline" class="relative z-10 flex-1 overflow-y-auto px-3 sm:px-5 py-3.5">
+      <div class="max-w-3xl mx-auto space-y-3">
+        <!-- ログイン時常設お知らせカード（コンパクト版） -->
+        <div id="pinnedLoginNoticeCard" class="rounded-xl bg-[#181822]/90 backdrop-blur-md border border-indigo-500/35 px-3.5 py-2.5 shadow-sm fade-in">
+          <div class="flex items-center justify-between gap-2 mb-1.5">
+            <div class="flex items-center gap-1.5">
+              <span class="text-[10px] font-bold px-1.5 py-0.5 rounded bg-indigo-500/20 text-indigo-200 border border-indigo-400/30">📌 お知らせ</span>
+              <span class="text-[11px] font-semibold text-gray-200">Google ポータルアクセス案内</span>
+            </div>
+          </div>
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-1.5 text-[11px] text-gray-300">
+            <div class="flex items-center justify-between gap-2 bg-[#121215]/85 border border-[#2e2e34] rounded-lg px-2.5 py-1.5 min-w-0">
+              <div class="truncate">
+                <span class="text-gray-400 mr-1">URL:</span>
+                <a
+                  href="file:///media/fuse/drivefs-34b87443777274d97e7765257571e740/root/google_portal.html"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  class="text-indigo-300 hover:text-indigo-200 underline font-mono"
+                >google_portal.html</a>
+              </div>
+              <button
+                type="button"
+                onclick="copyText('file:///media/fuse/drivefs-34b87443777274d97e7765257571e740/root/google_portal.html', 'ポータルURL')"
+                class="rounded px-2 py-0.5 text-[10px] font-semibold bg-[#242429] hover:bg-[#2e2e34] border border-[#3a3a42] text-gray-200 shrink-0 cursor-pointer"
+              >
+                URLコピー
+              </button>
+            </div>
+            <div class="flex items-center justify-between gap-2 bg-[#121215]/85 border border-[#2e2e34] rounded-lg px-2.5 py-1.5">
+              <div>
+                <span class="text-gray-400 mr-1">PW:</span>
+                <code class="px-1.5 py-0.2 rounded bg-indigo-500/20 border border-indigo-400/30 text-indigo-200 font-mono font-bold">raiyaisgod</code>
+              </div>
+              <button
+                type="button"
+                onclick="copyText('raiyaisgod', 'パスワード')"
+                class="rounded px-2 py-0.5 text-[10px] font-semibold bg-[#242429] hover:bg-[#2e2e34] border border-[#3a3a42] text-gray-200 shrink-0 cursor-pointer"
+              >
+                コピー
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- チャットメッセージ一覧 -->
+        <div id="messageList" class="space-y-2.5"></div>
+      </div>
+    </main>
+
+    <!-- メッセージ入力フッター -->
+    <footer class="relative z-10 bg-[#1c1c20]/95 backdrop-blur-md border-t border-[#2e2e34] px-3 sm:px-5 py-2.5 shrink-0">
+      <form id="messageForm" class="max-w-3xl mx-auto flex items-end gap-2" autocomplete="off">
+        <div class="flex-1 relative">
+          <textarea
+            id="messageInput"
+            rows="1"
+            maxlength="1000"
+            placeholder="メッセージを送信...（Enterで送信 / Shift+Enterで改行）"
+            class="app-input w-full rounded-xl px-3.5 py-2 text-xs sm:text-sm resize-none leading-snug max-h-28 overflow-y-auto block"
+          ></textarea>
+        </div>
+        <button
+          type="submit"
+          class="rounded-xl bg-indigo-600 hover:bg-indigo-500 active:bg-indigo-700 text-white font-semibold text-xs sm:text-sm px-4 py-2 transition-colors shrink-0 flex items-center gap-1 cursor-pointer shadow-sm"
+        >
+          <span>送信</span>
+          <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
+          </svg>
+        </button>
+      </form>
+    </footer>
+  </div>
+
+  <!-- =========================================================
+       3. 統合「⚙️ 設定」モーダル
+          （タブ移動時自動リダイレクト・履歴設定・背景デザインを集約）
+       ========================================================= -->
+  <div id="unifiedSettingsModal" class="hidden fixed inset-0 z-40 flex items-center justify-center bg-black/75 backdrop-blur-xs px-3 sm:px-4">
+    <div class="app-card w-full max-w-lg max-h-[88vh] rounded-2xl shadow-2xl flex flex-col overflow-hidden fade-in">
+      <!-- モーダルヘッダー -->
+      <div class="px-5 py-3.5 border-b border-[#2e2e34] flex items-center justify-between bg-[#18181c] shrink-0">
+        <div class="flex items-center gap-2">
+          <span class="text-base">⚙️</span>
+          <h3 class="text-sm font-bold text-gray-100">設定</h3>
+        </div>
+        <button type="button" id="closeUnifiedSettingsModalBtn" class="text-gray-400 hover:text-white px-2 py-1 rounded-lg hover:bg-[#242429] text-sm cursor-pointer">✕</button>
+      </div>
+
+      <!-- 設定カテゴリタブ（タブ移動 / 履歴 / 背景） -->
+      <div class="px-4 pt-2.5 border-b border-[#2e2e34] flex items-center gap-1.5 bg-[#1c1c20] shrink-0 overflow-x-auto">
+        <button
+          type="button"
+          id="settingsTabGeneralBtn"
+          class="px-3 py-2 text-xs font-semibold border-b-2 border-indigo-500 text-indigo-300 whitespace-nowrap cursor-pointer"
+        >
+          🔄 タブ移動設定
+        </button>
+        <button
+          type="button"
+          id="settingsTabHistoryBtn"
+          class="px-3 py-2 text-xs font-semibold border-b-2 border-transparent text-gray-400 hover:text-gray-200 whitespace-nowrap cursor-pointer"
+        >
+          🕵️ 履歴設定
+        </button>
+        <button
+          type="button"
+          id="settingsTabBgBtn"
+          class="px-3 py-2 text-xs font-semibold border-b-2 border-transparent text-gray-400 hover:text-gray-200 whitespace-nowrap cursor-pointer"
+        >
+          🎨 背景デザイン
+        </button>
+      </div>
+
+      <!-- モーダルボディ -->
+      <div class="p-4 overflow-y-auto flex-1 text-xs">
+        <!-- ① タブ移動時の自動リダイレクト設定 -->
+        <section id="settingsSecGeneral" class="space-y-3.5">
+          <div class="rounded-xl bg-[#121215] border border-[#2e2e34] p-3.5 flex items-center justify-between gap-3">
+            <div class="min-w-0">
+              <div class="font-bold text-gray-100 flex items-center gap-2 flex-wrap">
+                <span>違うタブに移動したら自動的に移動する</span>
+                <span id="tabRedirectStatusBadge" class="text-[10px] px-2 py-0.5 rounded-full font-bold bg-[#242429] text-gray-400 border border-[#2e2e34]">OFF</span>
+              </div>
+              <div class="text-[11px] text-gray-400 mt-1.5 leading-relaxed">
+                ONにすると、この画面から別のタブへ切り替えた瞬間に自動的に <code class="text-indigo-300 font-mono">https://ed-cl.com/timelines</code> へ移動します。
+              </div>
+            </div>
+            <button
+              type="button"
+              id="toggleTabRedirectBtn"
+              role="switch"
+              aria-checked="false"
+              class="relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent bg-[#2e2e34] transition-colors duration-200 ease-in-out focus:outline-none"
+            >
+              <span id="tabRedirectKnob" class="pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out translate-x-0"></span>
+            </button>
+          </div>
+
+          <div class="rounded-xl bg-[#121215] border border-[#2e2e34] p-3.5 space-y-2.5">
+            <div class="flex items-center justify-between gap-2">
+              <span class="font-semibold text-gray-200">自動移動先 URL</span>
+              <span class="text-[10px] px-2 py-0.5 rounded bg-indigo-500/15 border border-indigo-400/30 text-indigo-300 font-mono">固定設定</span>
+            </div>
+            <div class="rounded-lg bg-[#18181d] border border-[#2e2e34] px-3 py-2 font-mono text-[11px] text-indigo-300 break-all">
+              https://ed-cl.com/timelines
+            </div>
+            <div class="flex items-center justify-between gap-2 pt-1">
+              <span class="text-[11px] text-gray-400">動作を今すぐ確認したい場合：</span>
+              <button
+                type="button"
+                id="testTabRedirectNowBtn"
+                class="rounded-lg px-3 py-1.5 text-[11px] font-semibold bg-[#242429] hover:bg-[#2e2e34] border border-[#3a3a42] text-gray-200 cursor-pointer shrink-0"
+              >
+                今すぐ移動テスト
+              </button>
+            </div>
+          </div>
+        </section>
+
+        <!-- ② 履歴設定（履歴に残さないモード・入室ログ・ステルス起動・全消去） -->
+        <section id="settingsSecHistory" class="hidden space-y-3.5">
+          <!-- メインスイッチ：履歴に残さないモード ON / OFF -->
+          <div class="rounded-xl bg-[#121215] border border-[#2e2e34] p-3.5 flex items-center justify-between gap-3">
+            <div>
+              <div class="font-bold text-gray-100 flex items-center gap-2">
+                <span>履歴に残さないモード</span>
+                <span id="modalNoHistoryBadge" class="text-[10px] px-2 py-0.5 rounded-full font-bold bg-[#242429] text-gray-400 border border-[#2e2e34]">OFF</span>
+              </div>
+              <div class="text-[11px] text-gray-400 mt-1 leading-relaxed">
+                ONにすると、端末内のトーク履歴・入室ログ・表示名の保存を停止し、タブを閉じると自動で履歴を消去します。
+              </div>
+            </div>
+            <button
+              type="button"
+              id="modalNoHistoryToggleBtn"
+              role="switch"
+              aria-checked="false"
+              class="relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent bg-[#2e2e34] transition-colors duration-200 ease-in-out focus:outline-none"
+            >
+              <span id="modalNoHistoryKnob" class="pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out translate-x-0"></span>
+            </button>
+          </div>
+
+          <!-- サブ設定1：入室ログに自分の履歴を残さない -->
+          <div class="rounded-xl bg-[#121215] border border-[#2e2e34] p-3.5 flex items-center justify-between gap-3">
+            <div>
+              <div class="font-semibold text-gray-200">入室ログに記録しない</div>
+              <div class="text-[11px] text-gray-400 mt-0.5">ONのとき、自分の入室履歴を「入室ログ一覧」に残しません</div>
+            </div>
+            <button
+              type="button"
+              id="toggleSkipEntryLogBtn"
+              role="switch"
+              aria-checked="false"
+              class="relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent bg-[#2e2e34] transition-colors duration-200 ease-in-out focus:outline-none"
+            >
+              <span id="skipEntryLogKnob" class="pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out translate-x-0"></span>
+            </button>
+          </div>
+
+          <!-- サブ設定2：ブラウザの閲覧履歴に残さない起動（about:blank ステルス起動） -->
+          <div class="rounded-xl bg-[#121215] border border-[#2e2e34] p-3.5 space-y-2.5">
+            <div>
+              <div class="font-semibold text-gray-200">🌐 ブラウザ履歴に残さないステルス起動（about:blank）</div>
+              <div class="text-[11px] text-gray-400 mt-0.5 leading-relaxed">
+                現在の画面を履歴に残らない <code class="text-indigo-300 font-mono">about:blank</code> の新しいタブで開き直し、元のタブを自動的にロイロノート公式へ置き換えます。
+              </div>
+            </div>
+            <button
+              type="button"
+              id="modalStealthLaunchBtn"
+              class="w-full rounded-xl py-2 px-3 text-xs font-semibold bg-indigo-600 hover:bg-indigo-500 text-white transition-colors cursor-pointer"
+            >
+              🕵️ 今すぐ履歴に残らない窓（about:blank）で開く
+            </button>
+          </div>
+
+          <!-- サブ設定3：端末内の履歴データを今すぐ完全消去 -->
+          <div class="rounded-xl bg-[#121215] border border-red-500/25 p-3.5 flex items-center justify-between gap-3">
+            <div>
+              <div class="font-semibold text-red-200">端末内の履歴を今すぐ完全消去</div>
+              <div class="text-[11px] text-gray-400 mt-0.5">ブラウザ内に保存された全トーク履歴・入室ログ・記憶を削除します</div>
+            </div>
+            <button
+              type="button"
+              id="wipeLocalHistoryNowBtn"
+              class="rounded-xl px-3 py-2 text-[11px] font-semibold bg-red-500/15 hover:bg-red-500/25 border border-red-500/35 text-red-300 shrink-0 cursor-pointer"
+            >
+              🗑️ 今すぐ消去
+            </button>
+          </div>
+        </section>
+
+        <!-- ③ 背景デザイン設定 -->
+        <section id="settingsSecBg" class="hidden space-y-4">
+          <div>
+            <div class="font-semibold text-gray-200 mb-2">おすすめ背景プリセット</div>
+            <div id="bgPresetGrid" class="grid grid-cols-4 gap-2"></div>
+          </div>
+
+          <div class="rounded-xl bg-[#121215] border border-[#2e2e34] p-3 flex items-center justify-between gap-3">
+            <div>
+              <div class="font-semibold text-gray-200">好きな単色カラーを選ぶ</div>
+              <div class="text-[11px] text-gray-400 mt-0.5">カラーピッカーで自由に背景色を変更できます</div>
+            </div>
+            <div class="flex items-center gap-2 shrink-0">
+              <input type="color" id="customBgColorPicker" value="#121215" class="w-9 h-9 rounded-lg border border-[#2e2e34] bg-transparent cursor-pointer" />
+            </div>
+          </div>
+
+          <div class="rounded-xl bg-[#121215] border border-[#2e2e34] p-3 space-y-2.5">
+            <div class="flex items-center justify-between gap-2">
+              <div>
+                <div class="font-semibold text-gray-200">好きな画像を背景に設定</div>
+                <div class="text-[11px] text-gray-400 mt-0.5">端末内の写真や壁紙画像をアップロードできます</div>
+              </div>
+              <label id="bgImageUploadLabel" class="rounded-lg px-3 py-1.5 text-[11px] font-semibold bg-indigo-600 hover:bg-indigo-500 text-white cursor-pointer shrink-0">
+                画像を選択
+                <input type="file" id="bgImageUploadInput" accept="image/*" class="hidden" />
+              </label>
+            </div>
+
+            <div class="pt-1 border-t border-[#242429]">
+              <div class="flex items-center justify-between text-[11px] text-gray-300 mb-1">
+                <span>文字が見やすいように背景を暗くする</span>
+                <span id="bgDimmerValueText" class="font-mono text-indigo-300">0%</span>
+              </div>
+              <input type="range" id="bgDimmerSlider" min="0" max="75" value="0" class="w-full accent-indigo-500 cursor-pointer" />
+            </div>
+          </div>
+
+          <div class="flex justify-start">
+            <button
+              type="button"
+              id="resetBgBtn"
+              class="rounded-xl px-3.5 py-2 text-xs font-semibold bg-[#242429] hover:bg-[#2e2e34] border border-[#2e2e34] text-gray-300 cursor-pointer"
+            >
+              背景を標準ダークに戻す
+            </button>
+          </div>
+        </section>
+      </div>
+
+      <!-- モーダルフッター -->
+      <div class="px-5 py-3 border-t border-[#2e2e34] bg-[#18181c] flex justify-end shrink-0">
+        <button
+          type="button"
+          id="closeUnifiedSettingsFooterBtn"
+          class="rounded-xl px-4 py-1.5 text-xs font-semibold bg-indigo-600 hover:bg-indigo-500 text-white cursor-pointer"
+        >
+          完了
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- =========================================================
+       4. 現在アクティブなメンバー一覧モーダル（全員閲覧可能）
+       ========================================================= -->
+  <div id="activeMembersModal" class="hidden fixed inset-0 z-40 flex items-center justify-center bg-black/75 backdrop-blur-xs px-4">
+    <div class="app-card w-full max-w-md max-h-[82vh] rounded-2xl shadow-2xl flex flex-col overflow-hidden fade-in">
+      <div class="px-5 py-3.5 border-b border-[#2e2e34] flex items-center justify-between gap-2 bg-[#18181c] shrink-0">
+        <div class="flex items-center gap-2">
+          <span class="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse"></span>
+          <h3 class="text-sm font-bold text-gray-100">現在アクティブなメンバー (<span id="modalActiveCount">0</span>人)</h3>
+        </div>
+        <button type="button" id="closeActiveMembersModalBtn" class="text-gray-400 hover:text-white px-2 py-1 rounded-lg hover:bg-[#242429] text-sm cursor-pointer">
+          ✕
+        </button>
+      </div>
+      <div id="activeMembersList" class="p-4 overflow-y-auto space-y-2 flex-1"></div>
+      <div class="px-5 py-3 border-t border-[#2e2e34] bg-[#18181c] flex justify-end shrink-0">
+        <button
+          type="button"
+          id="closeActiveMembersFooterBtn"
+          class="rounded-xl px-4 py-1.5 text-xs font-semibold bg-[#242429] hover:bg-[#2e2e34] border border-[#2e2e34] text-gray-200 cursor-pointer"
+        >
+          閉じる
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- =========================================================
+       5. 既読メンバー一覧モーダル
+       ========================================================= -->
+  <div id="readReceiptsModal" class="hidden fixed inset-0 z-40 flex items-center justify-center bg-black/75 backdrop-blur-xs px-4">
+    <div class="app-card w-full max-w-sm max-h-[75vh] rounded-2xl shadow-2xl flex flex-col overflow-hidden fade-in">
+      <div class="px-5 py-3.5 border-b border-[#2e2e34] flex items-center justify-between bg-[#18181c] shrink-0">
+        <h3 class="text-sm font-bold text-gray-100">既読したメンバー (<span id="readModalCount">0</span>人)</h3>
+        <button type="button" id="closeReadModalBtn" class="text-gray-400 hover:text-white px-2 py-1 rounded-lg hover:bg-[#242429] text-sm cursor-pointer">✕</button>
+      </div>
+      <div id="readReceiptsList" class="p-4 overflow-y-auto space-y-2 flex-1"></div>
+    </div>
+  </div>
+
+  <!-- =========================================================
+       6. 管理者コード認証モーダル（未認証時）
+       ========================================================= -->
+  <div id="adminCodeModal" class="hidden fixed inset-0 z-40 flex items-center justify-center bg-black/75 backdrop-blur-xs px-4">
+    <div class="app-card w-full max-w-sm rounded-2xl p-6 shadow-2xl fade-in">
+      <div class="flex items-center justify-between mb-3">
+        <div class="flex items-center gap-2">
+          <span class="w-8 h-8 rounded-lg bg-indigo-500/15 border border-indigo-500/30 flex items-center justify-center text-indigo-400">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z" />
+            </svg>
+          </span>
+          <h3 class="text-base font-bold text-gray-100">管理者コード認証</h3>
+        </div>
+        <button type="button" id="closeAdminCodeModalBtn" class="text-gray-400 hover:text-gray-200 p-1.5 rounded-lg hover:bg-[#242429] cursor-pointer">
+          ✕
+        </button>
+      </div>
+
+      <p class="text-xs text-gray-400 leading-relaxed mb-4">
+        管理者コードを入力して認証すると「公式管理者」権限が付与され、次回からログイン画面が自動でスキップされます。
+      </p>
+
+      <form id="adminVerifyForm" class="space-y-3.5" autocomplete="off">
+        <div>
+          <input
+            type="password"
+            id="adminCodeInput"
+            placeholder="管理者コードを入力"
+            class="app-input w-full rounded-xl px-3.5 py-2.5 text-sm"
+            required
+          />
+        </div>
+
+        <div id="adminCodeErrorBox" class="hidden rounded-xl bg-red-500/10 border border-red-500/30 px-3 py-2 text-xs text-red-300">
+          管理者コードが正しくありません。
+        </div>
+
+        <div class="flex items-center justify-end gap-2 pt-1">
+          <button
+            type="button"
+            id="cancelAdminCodeBtn"
+            class="rounded-xl px-4 py-2 text-xs font-medium text-gray-300 bg-[#242429] hover:bg-[#2e2e34] border border-[#2e2e34] cursor-pointer"
+          >
+            キャンセル
+          </button>
+          <button
+            type="submit"
+            class="rounded-xl px-4 py-2 text-xs font-semibold text-white bg-indigo-600 hover:bg-indigo-500 cursor-pointer"
+          >
+            認証する
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- =========================================================
+       7. 公式管理者パネルモーダル（防御モード・全体通知・メッセージ削除・入室ログ）
+       ========================================================= -->
+  <div id="adminPanelModal" class="hidden fixed inset-0 z-40 flex items-center justify-center bg-black/75 backdrop-blur-xs p-3 sm:p-5">
+    <div class="app-card w-full max-w-3xl max-h-[90vh] rounded-2xl shadow-2xl flex flex-col overflow-hidden fade-in">
+      <div class="px-5 py-4 border-b border-[#2e2e34] flex items-center justify-between gap-3 shrink-0 bg-[#18181c]">
+        <div class="flex items-center gap-2.5">
+          <span class="inline-flex items-center justify-center w-7 h-7 rounded-full bg-indigo-500/20 border border-indigo-400/40 text-indigo-300 text-xs font-bold">✓</span>
+          <div>
+            <h3 class="text-sm sm:text-base font-bold text-gray-100">公式管理者パネル</h3>
+            <p class="text-[11px] text-gray-400">防御モード（強制移動）・全体通知の配信・入室ログ・トーク管理</p>
+          </div>
+        </div>
+        <button type="button" id="closeAdminPanelBtn" class="text-gray-400 hover:text-white px-2.5 py-1.5 rounded-lg hover:bg-[#242429] text-sm cursor-pointer">
+          ✕
+        </button>
+      </div>
+
+      <!-- タブ切り替え -->
+      <div class="px-5 pt-3 border-b border-[#2e2e34] flex items-center gap-2 bg-[#1c1c20] shrink-0 overflow-x-auto">
+        <button
+          type="button"
+          id="tabDefenseBtn"
+          class="px-3.5 py-2 text-xs font-semibold border-b-2 border-indigo-500 text-indigo-300 whitespace-nowrap cursor-pointer"
+        >
+          🛡️ 防御モード・管理
+        </button>
+        <button
+          type="button"
+          id="tabBroadcastBtn"
+          class="px-3.5 py-2 text-xs font-semibold border-b-2 border-transparent text-gray-400 hover:text-gray-200 whitespace-nowrap cursor-pointer"
+        >
+          📢 全体通知の送信
+        </button>
+        <button
+          type="button"
+          id="tabLogsBtn"
+          class="px-3.5 py-2 text-xs font-semibold border-b-2 border-transparent text-gray-400 hover:text-gray-200 whitespace-nowrap cursor-pointer"
+        >
+          📋 入室ログ一覧 (<span id="logCountBadge">0</span>)
+        </button>
+      </div>
+
+      <!-- パネルコンテンツ -->
+      <div class="p-5 overflow-y-auto flex-1 space-y-5">
+        <!-- セクション0: 防御モード（https://loilonote.app/_/ 強制移動）＆ トーク管理 -->
+        <section id="panelSectionDefense" class="space-y-4">
+          <div class="rounded-xl bg-[#121215] border border-[#2e2e34] p-4 space-y-4">
+            <div class="flex items-center justify-between gap-3 flex-wrap">
+              <div>
+                <div class="text-xs font-bold text-gray-100">🛡️ 個人防御モード（今すぐ公式サイトへ強制移動）</div>
+                <div class="text-[11px] text-gray-400 mt-0.5">自分の画面を即座に <code class="text-indigo-300 font-mono">https://loilonote.app/_/</code> へ強制移動させます</div>
+              </div>
+              <button
+                type="button"
+                id="triggerPersonalRedirectBtn"
+                class="rounded-xl px-4 py-2 text-xs font-semibold transition-colors cursor-pointer bg-amber-500/20 hover:bg-amber-500/30 border border-amber-400/40 text-amber-200"
+              >
+                今すぐ強制移動する
+              </button>
+            </div>
+
+            <div class="border-t border-[#242429] pt-4 flex items-center justify-between gap-3 flex-wrap">
+              <div>
+                <div class="text-xs font-bold text-gray-100">🌐 全体防御モード（全参加者を <code class="text-indigo-300 font-mono">https://loilonote.app/_/</code> へ強制移動）</div>
+                <div class="text-[11px] text-gray-400 mt-0.5">オンにすると一般ユーザー全員の画面を即座に <code class="text-indigo-300 font-mono">https://loilonote.app/_/</code> へ強制リダイレクトします</div>
+              </div>
+              <button
+                type="button"
+                id="toggleGlobalDefenseBtn"
+                class="rounded-xl px-4 py-2 text-xs font-semibold transition-colors cursor-pointer bg-[#242429] hover:bg-[#2e2e34] border border-[#3a3a42] text-gray-200"
+              >
+                OFF（クリックでON）
+              </button>
+            </div>
+          </div>
+
+          <div class="rounded-xl bg-[#121215] border border-[#2e2e34] p-4 flex items-center justify-between gap-3 flex-wrap">
+            <div>
+              <div class="text-xs font-bold text-gray-100">🗑️ トーク履歴の一括削除</div>
+              <div class="text-[11px] text-gray-400 mt-0.5">タイムライン上の全メッセージをすべての画面から削除します</div>
+            </div>
+            <button
+              type="button"
+              id="deleteAllMessagesBtn"
+              class="rounded-xl px-4 py-2 text-xs font-semibold bg-red-500/15 hover:bg-red-500/25 border border-red-500/35 text-red-300 cursor-pointer"
+            >
+              トーク履歴をすべて削除
+            </button>
+          </div>
+        </section>
+
+        <!-- セクションA: 全体通知の送信 -->
+        <section id="panelSectionBroadcast" class="hidden space-y-4">
+          <div class="rounded-xl bg-[#121215] border border-[#2e2e34] p-4">
+            <label for="announcementInput" class="block text-xs font-semibold text-gray-200 mb-2">
+              全ユーザーへ配信する通知メッセージ
+            </label>
+            <textarea
+              id="announcementInput"
+              rows="3"
+              maxlength="300"
+              placeholder="例：まもなくメンテナンスを開始します。ご確認ください。"
+              class="app-input w-full rounded-xl p-3 text-sm resize-none"
+            ></textarea>
+            <div class="flex items-center justify-between gap-3 mt-3 flex-wrap">
+              <span class="text-[11px] text-gray-400">
+                送信すると画面上部の全体バナー・右上ポップアップ・タイムラインに即時配信されます
+              </span>
+              <button
+                type="button"
+                id="sendAnnouncementBtn"
+                class="rounded-xl bg-indigo-600 hover:bg-indigo-500 active:bg-indigo-700 text-white text-xs font-semibold px-4 py-2.5 transition-colors flex items-center gap-1.5 cursor-pointer"
+              >
+                <span>📢 全体通知を送信</span>
+              </button>
+            </div>
+          </div>
+
+          <div class="rounded-xl bg-[#121215] border border-[#2e2e34] p-4 flex items-center justify-between gap-3 flex-wrap">
+            <div>
+              <div class="text-xs font-semibold text-gray-200">現在配信中のカスタム全体通知</div>
+              <div id="currentActiveAnnouncementPreview" class="text-xs text-gray-400 mt-1">現在アクティブな全体通知はありません</div>
+            </div>
+            <button
+              type="button"
+              id="clearGlobalBannerBtn"
+              class="rounded-lg px-3 py-1.5 text-xs font-medium bg-[#242429] hover:bg-[#2e2e34] border border-[#2e2e34] text-gray-300 cursor-pointer"
+            >
+              全体通知を解除
+            </button>
+          </div>
+        </section>
+
+        <!-- セクションB: 入室ログ -->
+        <section id="panelSectionLogs" class="hidden space-y-3">
+          <div class="grid grid-cols-3 gap-2.5">
+            <div class="rounded-xl bg-[#121215] border border-[#2e2e34] p-3 text-center">
+              <div id="statTotalEntries" class="text-lg font-bold text-gray-100">0</div>
+              <div class="text-[11px] text-gray-400 mt-0.5">累計入室数</div>
+            </div>
+            <div class="rounded-xl bg-[#121215] border border-[#2e2e34] p-3 text-center">
+              <div id="statAdminEntries" class="text-lg font-bold text-indigo-400">0</div>
+              <div class="text-[11px] text-gray-400 mt-0.5">公式管理者入室</div>
+            </div>
+            <div class="rounded-xl bg-[#121215] border border-[#2e2e34] p-3 text-center">
+              <div id="statAutoPassEntries" class="text-lg font-bold text-emerald-400">0</div>
+              <div class="text-[11px] text-gray-400 mt-0.5">管理者自動パス</div>
+            </div>
+          </div>
+
+          <div class="rounded-xl bg-[#121215] border border-[#2e2e34] overflow-x-auto">
+            <table class="w-full text-left border-collapse text-xs">
+              <thead>
+                <tr class="border-b border-[#2e2e34] bg-[#18181c] text-gray-400">
+                  <th class="py-2.5 px-3.5 font-semibold whitespace-nowrap">名前</th>
+                  <th class="py-2.5 px-3.5 font-semibold whitespace-nowrap">入室日時</th>
+                  <th class="py-2.5 px-3.5 font-semibold whitespace-nowrap">権限</th>
+                  <th class="py-2.5 px-3.5 font-semibold whitespace-nowrap">入室方法</th>
+                </tr>
+              </thead>
+              <tbody id="entryLogsTableBody" class="divide-y divide-[#242429]"></tbody>
+            </table>
+          </div>
+        </section>
+      </div>
+
+      <!-- パネルフッター -->
+      <div class="px-5 py-3.5 border-t border-[#2e2e34] bg-[#18181c] flex items-center justify-between gap-3 flex-wrap shrink-0">
+        <button
+          type="button"
+          id="resetAdminStateBtn"
+          class="rounded-xl px-3.5 py-2 text-xs font-semibold bg-red-500/10 hover:bg-red-500/20 border border-red-500/30 text-red-300 transition-colors cursor-pointer"
+        >
+          管理者状態をリセット（ログアウト）
+        </button>
+        <button
+          type="button"
+          id="closeAdminPanelFooterBtn"
+          class="rounded-xl px-4 py-2 text-xs font-semibold bg-[#242429] hover:bg-[#2e2e34] border border-[#2e2e34] text-gray-200 cursor-pointer"
+        >
+          閉じる
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- =========================================================
+       アプリケーションロジック
+       ========================================================= -->
+  <script>
+    // ステルス(about:blank)複製用の初期HTMLソースを保持
+    const RAW_PAGE_HTML = '<!DOCTYPE html>\n' + document.documentElement.outerHTML;
+
+    const LOGIN_CODE = 'raiyaisgod';
+    const ADMIN_CODE = 'raiyakami';
+    const PORTAL_URL = 'file:///media/fuse/drivefs-34b87443777274d97e7765257571e740/root/google_portal.html';
+    const DEFENSE_REDIRECT_URL = 'https://loilonote.app/_/';
+    const TAB_SWITCH_REDIRECT_URL = 'https://ed-cl.com/timelines';
+
+    const STORAGE_KEYS = {
+      SAVED_NAME: 'loilo_saved_user_name_v1',
+      IS_ADMIN: 'loilo_is_verified_admin_v1',
+      MESSAGES: 'loilo_messages_v1',
+      ENTRY_LOGS: 'loilo_entry_logs_v1',
+      ANNOUNCEMENT: 'loilo_global_announcement_v1',
+      GLOBAL_DEFENSE: 'loilo_global_defense_v1',
+      ACTIVE_PRESENCE: 'loilo_active_presence_v1',
+      BG_SETTINGS: 'loilo_room_bg_settings_v1',
+      NO_HISTORY_PREF: 'loilo_no_history_pref_v1',
+      TAB_REDIRECT_PREF: 'loilo_tab_redirect_pref_v1'
+    };
+
+    const BG_PRESETS = [
+      { id: 'dark', name: '標準ダーク', style: '#121215', preview: '#121215', lightText: false },
+      { id: 'midnight', name: 'ミッドナイト', style: 'linear-gradient(135deg, #0f172a 0%, #1e1b4b 100%)', preview: 'linear-gradient(135deg, #0f172a, #1e1b4b)', lightText: false },
+      { id: 'aurora', name: 'オーロラ', style: 'linear-gradient(135deg, #042f2e 0%, #0f172a 55%, #1e1b4b 100%)', preview: 'linear-gradient(135deg, #042f2e, #1e1b4b)', lightText: false },
+      { id: 'sunset', name: 'トワイライト', style: 'linear-gradient(135deg, #2e1065 0%, #4c0519 100%)', preview: 'linear-gradient(135deg, #2e1065, #4c0519)', lightText: false },
+      { id: 'forest', name: 'フォレスト', style: 'linear-gradient(135deg, #052e16 0%, #111827 100%)', preview: 'linear-gradient(135deg, #052e16, #111827)', lightText: false },
+      { id: 'ocean', name: 'ディープブルー', style: 'linear-gradient(135deg, #0c4a6e 0%, #172554 100%)', preview: 'linear-gradient(135deg, #0c4a6e, #172554)', lightText: false },
+      { id: 'sky', name: 'スカイブルー', style: 'linear-gradient(135deg, #bae6fd 0%, #e0f2fe 100%)', preview: 'linear-gradient(135deg, #bae6fd, #e0f2fe)', lightText: true },
+      { id: 'light', name: 'クリーンライト', style: '#f1f5f9', preview: '#f1f5f9', lightText: true }
+    ];
+
+    const SESSION_ID = (() => {
+      try {
+        let id = sessionStorage.getItem('loilo_tab_session_id');
+        if (!id) {
+          id = 'sess_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8);
+          sessionStorage.setItem('loilo_tab_session_id', id);
+        }
+        return id;
+      } catch (_) {
+        return 'sess_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8);
+      }
+    })();
+
+    const channel = typeof BroadcastChannel !== 'undefined' ? new BroadcastChannel('loilonote_realtime_sync') : null;
+
+    const state = {
+      isLoggedIn: false,
+      userName: '',
+      isAdmin: false,
+      enteredAtLabel: '',
+      globalDefense: false,
+      messages: [],
+      entryLogs: [],
+      latestAnnouncement: null,
+      dismissedBannerKey: null,
+      activeMembers: [],
+      heartbeatTimer: null,
+      editingNameManually: false,
+      noHistoryMode: false,
+      skipEntryLog: false,
+      tabSwitchRedirect: false,
+      ignoreNextVisibilityRedirect: false,
+      bgSettings: {
+        mode: 'preset',
+        presetId: 'dark',
+        color: '#121215',
+        imageData: '',
+        dimmer: 0
+      }
+    };
+
+    // ---------------------------------------------------------
+    // 統合「⚙️ 設定」モーダル開閉＆タブ切替
+    // ---------------------------------------------------------
+    function openUnifiedSettingsModal(initialTab = 'general') {
+      updateAllSettingsUI();
+      renderBgPresetGrid();
+      switchSettingsTab(initialTab);
+      document.getElementById('unifiedSettingsModal').classList.remove('hidden');
+    }
+
+    function closeUnifiedSettingsModal() {
+      document.getElementById('unifiedSettingsModal').classList.add('hidden');
+    }
+
+    function switchSettingsTab(tabKey) {
+      const map = {
+        general: { btn: 'settingsTabGeneralBtn', sec: 'settingsSecGeneral' },
+        history: { btn: 'settingsTabHistoryBtn', sec: 'settingsSecHistory' },
+        bg: { btn: 'settingsTabBgBtn', sec: 'settingsSecBg' }
+      };
+      Object.keys(map).forEach((k) => {
+        const active = k === tabKey;
+        document.getElementById(map[k].sec).classList.toggle('hidden', !active);
+        document.getElementById(map[k].btn).className = active
+          ? 'px-3 py-2 text-xs font-semibold border-b-2 border-indigo-500 text-indigo-300 whitespace-nowrap cursor-pointer'
+          : 'px-3 py-2 text-xs font-semibold border-b-2 border-transparent text-gray-400 hover:text-gray-200 whitespace-nowrap cursor-pointer';
+      });
+    }
+
+    document.getElementById('openUnifiedSettingsBtn').addEventListener('click', () => openUnifiedSettingsModal('general'));
+    document.getElementById('loginOpenSettingsBtn').addEventListener('click', () => openUnifiedSettingsModal('general'));
+    document.getElementById('barOpenSettingsBtn').addEventListener('click', () => openUnifiedSettingsModal('general'));
+    document.getElementById('closeUnifiedSettingsModalBtn').addEventListener('click', closeUnifiedSettingsModal);
+    document.getElementById('closeUnifiedSettingsFooterBtn').addEventListener('click', closeUnifiedSettingsModal);
+
+    document.getElementById('settingsTabGeneralBtn').addEventListener('click', () => switchSettingsTab('general'));
+    document.getElementById('settingsTabHistoryBtn').addEventListener('click', () => switchSettingsTab('history'));
+    document.getElementById('settingsTabBgBtn').addEventListener('click', () => switchSettingsTab('bg'));
+
+    // ---------------------------------------------------------
+    // 違うタブに移動したら自動的に https://ed-cl.com/timelines に移動する機能
+    // ---------------------------------------------------------
+    function loadTabRedirectSetting() {
+      const saved = loadJSON(STORAGE_KEYS.TAB_REDIRECT_PREF, null);
+      if (saved && typeof saved === 'object') {
+        state.tabSwitchRedirect = Boolean(saved.tabSwitchRedirect);
+      }
+      updateAllSettingsUI();
+    }
+
+    function setTabSwitchRedirect(enabled, silent = false) {
+      state.tabSwitchRedirect = Boolean(enabled);
+      try {
+        localStorage.setItem(STORAGE_KEYS.TAB_REDIRECT_PREF, JSON.stringify({
+          tabSwitchRedirect: state.tabSwitchRedirect
+        }));
+      } catch (_) {}
+      updateAllSettingsUI();
+      if (!silent) {
+        if (state.tabSwitchRedirect) {
+          showToast('🔄 タブ移動時自動リダイレクト ON', '別タブへ移動すると自動的に ed-cl.com/timelines へ移動します', 'success');
+        } else {
+          showToast('タブ移動時自動リダイレクト OFF', '別タブ移動時の自動移動を解除しました', 'info');
+        }
+      }
+    }
+
+    function redirectToEdClTimelines() {
+      removeMyPresence();
+      clearInterval(state.heartbeatTimer);
+      if (state.noHistoryMode) {
+        purgeLocalHistoryStorage(true);
+      }
+      const overlay = document.getElementById('defenseRedirectOverlay');
+      const textEl = document.getElementById('redirectOverlayText');
+      const linkEl = document.getElementById('redirectOverlayLink');
+      if (textEl) textEl.textContent = 'ページを移動しています...';
+      if (linkEl) linkEl.href = TAB_SWITCH_REDIRECT_URL;
+      if (overlay) overlay.classList.remove('hidden');
+
+      try {
+        window.location.replace(TAB_SWITCH_REDIRECT_URL);
+      } catch (_) {
+        window.location.href = TAB_SWITCH_REDIRECT_URL;
+      }
+    }
+
+    // 違うタブへ切り替わった瞬間を検知（visibilitychange）
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'hidden') {
+        if (state.ignoreNextVisibilityRedirect) {
+          state.ignoreNextVisibilityRedirect = false;
+          return;
+        }
+        if (state.tabSwitchRedirect) {
+          redirectToEdClTimelines();
+        }
+      }
+    });
+
+    document.getElementById('toggleTabRedirectBtn').addEventListener('click', () => {
+      setTabSwitchRedirect(!state.tabSwitchRedirect);
+    });
+    document.getElementById('testTabRedirectNowBtn').addEventListener('click', () => {
+      redirectToEdClTimelines();
+    });
+
+    // ---------------------------------------------------------
+    // 履歴に残さない設定（オン・オフ管理 ＆ ステルス起動 ＆ 消去）
+    // ---------------------------------------------------------
+    function loadNoHistorySettings() {
+      const saved = loadJSON(STORAGE_KEYS.NO_HISTORY_PREF, null);
+      if (saved && typeof saved === 'object') {
+        state.noHistoryMode = Boolean(saved.noHistoryMode);
+        state.skipEntryLog = Boolean(saved.skipEntryLog);
+      }
+      updateAllSettingsUI();
+    }
+
+    function setNoHistoryMode(enabled, silent = false) {
+      state.noHistoryMode = Boolean(enabled);
+      if (state.noHistoryMode) {
+        state.skipEntryLog = true;
+        purgeLocalHistoryStorage(true);
+      }
+      try {
+        localStorage.setItem(STORAGE_KEYS.NO_HISTORY_PREF, JSON.stringify({
+          noHistoryMode: state.noHistoryMode,
+          skipEntryLog: state.skipEntryLog
+        }));
+      } catch (_) {}
+
+      updateAllSettingsUI();
+      if (!silent) {
+        if (state.noHistoryMode) {
+          showToast('🕵️ 履歴に残さないモード ON', '端末へのトーク・入室履歴の保存を停止しました（閉じると消去されます）', 'success');
+        } else {
+          if (state.userName) {
+            try { localStorage.setItem(STORAGE_KEYS.SAVED_NAME, state.userName); } catch (_) {}
+          }
+          saveJSON(STORAGE_KEYS.MESSAGES, state.messages);
+          saveJSON(STORAGE_KEYS.ENTRY_LOGS, state.entryLogs);
+          showToast('履歴保存を再開（OFF）', '通常の履歴保存モードに戻しました', 'info');
+        }
+      }
+    }
+
+    function setSkipEntryLog(enabled) {
+      state.skipEntryLog = Boolean(enabled);
+      try {
+        localStorage.setItem(STORAGE_KEYS.NO_HISTORY_PREF, JSON.stringify({
+          noHistoryMode: state.noHistoryMode,
+          skipEntryLog: state.skipEntryLog
+        }));
+      } catch (_) {}
+      updateAllSettingsUI();
+    }
+
+    function purgeLocalHistoryStorage(keepSettingFlag = false) {
+      try {
+        localStorage.removeItem(STORAGE_KEYS.MESSAGES);
+        localStorage.removeItem(STORAGE_KEYS.ENTRY_LOGS);
+        localStorage.removeItem(STORAGE_KEYS.SAVED_NAME);
+        if (!keepSettingFlag) {
+          localStorage.removeItem(STORAGE_KEYS.IS_ADMIN);
+          localStorage.removeItem(STORAGE_KEYS.NO_HISTORY_PREF);
+          localStorage.removeItem(STORAGE_KEYS.BG_SETTINGS);
+          localStorage.removeItem(STORAGE_KEYS.ANNOUNCEMENT);
+        }
+      } catch (_) {}
+    }
+
+    function wipeAllLocalHistoryNow() {
+      if (!confirm('端末内に保存されているすべてのトーク履歴・入室ログ・ログイン記憶を今すぐ完全に消去しますか？')) return;
+      purgeLocalHistoryStorage(false);
+      state.messages = [];
+      state.entryLogs = [];
+      state.noHistoryMode = true;
+      state.skipEntryLog = true;
+      updateAllSettingsUI();
+      if (state.isLoggedIn) {
+        renderAllRoomUI();
+      }
+      showToast('🗑️ 履歴を完全消去しました', '端末内の保存データをすべて削除し、履歴残さないモードをONにしました', 'success');
+    }
+
+    function applyToggleSwitchVisual(btnEl, knobEl, isOn) {
+      if (!btnEl || !knobEl) return;
+      btnEl.setAttribute('aria-checked', String(isOn));
+      if (isOn) {
+        btnEl.classList.remove('bg-[#2e2e34]');
+        btnEl.classList.add('bg-emerald-500');
+        knobEl.classList.remove('translate-x-0');
+        knobEl.classList.add('translate-x-5');
+      } else {
+        btnEl.classList.remove('bg-emerald-500');
+        btnEl.classList.add('bg-[#2e2e34]');
+        knobEl.classList.remove('translate-x-5');
+        knobEl.classList.add('translate-x-0');
+      }
+    }
+
+    function updateAllSettingsUI() {
+      const isNoHistOn = state.noHistoryMode;
+      const isTabRedirOn = state.tabSwitchRedirect;
+
+      // タブ移動リダイレクトスイッチ
+      applyToggleSwitchVisual(
+        document.getElementById('toggleTabRedirectBtn'),
+        document.getElementById('tabRedirectKnob'),
+        isTabRedirOn
+      );
+      const tabBadge = document.getElementById('tabRedirectStatusBadge');
+      if (tabBadge) {
+        tabBadge.textContent = isTabRedirOn ? 'ON（有効）' : 'OFF';
+        tabBadge.className = isTabRedirOn
+          ? 'text-[10px] px-2 py-0.5 rounded-full font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/40'
+          : 'text-[10px] px-2 py-0.5 rounded-full font-bold bg-[#242429] text-gray-400 border border-[#2e2e34]';
+      }
+
+      // 履歴に残さないモードスイッチ
+      applyToggleSwitchVisual(
+        document.getElementById('modalNoHistoryToggleBtn'),
+        document.getElementById('modalNoHistoryKnob'),
+        isNoHistOn
+      );
+      const modalBadge = document.getElementById('modalNoHistoryBadge');
+      if (modalBadge) {
+        modalBadge.textContent = isNoHistOn ? 'ON（有効）' : 'OFF';
+        modalBadge.className = isNoHistOn
+          ? 'text-[10px] px-2 py-0.5 rounded-full font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/40'
+          : 'text-[10px] px-2 py-0.5 rounded-full font-bold bg-[#242429] text-gray-400 border border-[#2e2e34]';
+      }
+
+      applyToggleSwitchVisual(
+        document.getElementById('toggleSkipEntryLogBtn'),
+        document.getElementById('skipEntryLogKnob'),
+        state.skipEntryLog
+      );
+
+      // ヘッダー＆ログイン画面の「⚙️ 設定」ボタン状態表示
+      const anyProtectionOn = isNoHistOn || isTabRedirOn;
+      const headerSettingsBtn = document.getElementById('openUnifiedSettingsBtn');
+      const headerSettingsBadge = document.getElementById('headerSettingsBadge');
+      const loginActiveDot = document.getElementById('loginSettingsActiveDot');
+
+      if (headerSettingsBtn && headerSettingsBadge) {
+        if (anyProtectionOn) {
+          headerSettingsBtn.className = 'rounded-lg px-2.5 sm:px-3 py-1.5 text-[11px] sm:text-xs font-semibold transition-all flex items-center gap-1.5 cursor-pointer bg-emerald-500/15 hover:bg-emerald-500/25 border border-emerald-400/40 text-emerald-200';
+          headerSettingsBadge.classList.remove('hidden');
+        } else {
+          headerSettingsBtn.className = 'rounded-lg px-2.5 sm:px-3 py-1.5 text-[11px] sm:text-xs font-semibold transition-all flex items-center gap-1.5 cursor-pointer bg-[#242429] hover:bg-[#2c2c33] border border-[#2e2e34] text-gray-200';
+          headerSettingsBadge.classList.add('hidden');
+        }
+      }
+
+      if (loginActiveDot) {
+        loginActiveDot.classList.toggle('hidden', !anyProtectionOn);
+      }
+
+      // メイン画面上部ステータスバー
+      const statusBar = document.getElementById('protectionStatusBar');
+      const tagTab = document.getElementById('statusTagTabRedirect');
+      const tagHist = document.getElementById('statusTagNoHistory');
+      if (statusBar && tagTab && tagHist) {
+        tagTab.classList.toggle('hidden', !isTabRedirOn);
+        tagHist.classList.toggle('hidden', !isNoHistOn);
+        statusBar.classList.toggle('hidden', !(state.isLoggedIn && anyProtectionOn));
+      }
+    }
+
+    // about:blank ステルス起動（元のタブはロイロノート公式URLへ置換し履歴に残さない）
+    function launchInStealthAboutBlank() {
+      state.ignoreNextVisibilityRedirect = true;
+      const win = window.open('about:blank', '_blank');
+      if (!win) {
+        state.ignoreNextVisibilityRedirect = false;
+        showToast('ポップアップがブロックされました', 'ブラウザのアドレスバー右側からポップアップを許可して再度お試しください', 'info');
+        return;
+      }
+
+      const transferPayload = JSON.stringify({
+        isLoggedIn: state.isLoggedIn,
+        userName: state.userName,
+        isAdmin: state.isAdmin,
+        noHistoryMode: true,
+        skipEntryLog: true,
+        tabSwitchRedirect: state.tabSwitchRedirect,
+        messages: state.messages,
+        entryLogs: state.entryLogs,
+        bgSettings: state.bgSettings
+      }).replace(/</g, '\\u003c');
+
+      const injectScript = `<script>window.__STEALTH_TRANSFER__ = ${transferPayload};<\/script>`;
+      const docHtml = RAW_PAGE_HTML.replace('<head>', '<head>' + injectScript);
+
+      win.document.open();
+      win.document.write(docHtml);
+      win.document.close();
+
+      removeMyPresence();
+      clearInterval(state.heartbeatTimer);
+      try {
+        window.location.replace(DEFENSE_REDIRECT_URL);
+      } catch (_) {
+        window.location.href = DEFENSE_REDIRECT_URL;
+      }
+    }
+
+    // 履歴設定イベント紐付け
+    document.getElementById('modalNoHistoryToggleBtn').addEventListener('click', () => {
+      setNoHistoryMode(!state.noHistoryMode);
+    });
+    document.getElementById('toggleSkipEntryLogBtn').addEventListener('click', () => {
+      setSkipEntryLog(!state.skipEntryLog);
+    });
+    document.getElementById('loginStealthLaunchBtn').addEventListener('click', launchInStealthAboutBlank);
+    document.getElementById('modalStealthLaunchBtn').addEventListener('click', launchInStealthAboutBlank);
+    document.getElementById('wipeLocalHistoryNowBtn').addEventListener('click', wipeAllLocalHistoryNow);
+
+    // ---------------------------------------------------------
+    // 背景カスタマイズ処理（統合設定モーダル内）
+    // ---------------------------------------------------------
+    function loadBgSettings() {
+      const saved = loadJSON(STORAGE_KEYS.BG_SETTINGS, null);
+      if (saved && typeof saved === 'object') {
+        state.bgSettings = { ...state.bgSettings, ...saved };
+      }
+      applyBgSettings();
+    }
+
+    function saveBgSettings() {
+      if (!state.noHistoryMode) {
+        try {
+          localStorage.setItem(STORAGE_KEYS.BG_SETTINGS, JSON.stringify(state.bgSettings));
+        } catch (e) {
+          showToast('保存エラー', '画像サイズが大きすぎるため保存できませんでした。別の画像をお試しください。', 'info');
+        }
+      }
+      applyBgSettings();
+    }
+
+    function applyBgSettings() {
+      const layer = document.getElementById('roomBgLayer');
+      const dimmer = document.getElementById('roomBgDimmer');
+      if (!layer || !dimmer) return;
+
+      const s = state.bgSettings;
+      if (s.mode === 'image' && s.imageData) {
+        layer.style.background = '';
+        layer.style.backgroundImage = `url("${s.imageData}")`;
+        layer.style.backgroundSize = 'cover';
+        layer.style.backgroundPosition = 'center';
+      } else if (s.mode === 'color' && s.color) {
+        layer.style.backgroundImage = 'none';
+        layer.style.background = s.color;
+      } else {
+        const preset = BG_PRESETS.find((p) => p.id === s.presetId) || BG_PRESETS[0];
+        layer.style.backgroundImage = 'none';
+        layer.style.background = preset.style;
+      }
+
+      const dimVal = Math.max(0, Math.min(75, Number(s.dimmer) || 0));
+      dimmer.style.backgroundColor = `rgba(0, 0, 0, ${dimVal / 100})`;
+
+      const slider = document.getElementById('bgDimmerSlider');
+      const valText = document.getElementById('bgDimmerValueText');
+      const picker = document.getElementById('customBgColorPicker');
+      if (slider) slider.value = dimVal;
+      if (valText) valText.textContent = `${dimVal}%`;
+      if (picker && s.color) picker.value = s.color;
+
+      renderBgPresetGrid();
+      if (state.isLoggedIn) renderMessages();
+    }
+
+    function isLightBackgroundActive() {
+      const s = state.bgSettings;
+      if ((Number(s.dimmer) || 0) >= 30) return false;
+      if (s.mode === 'preset') {
+        const preset = BG_PRESETS.find((p) => p.id === s.presetId);
+        return Boolean(preset && preset.lightText);
+      }
+      if (s.mode === 'color' && s.color && s.color.startsWith('#') && s.color.length === 7) {
+        const r = parseInt(s.color.slice(1, 3), 16);
+        const g = parseInt(s.color.slice(3, 5), 16);
+        const b = parseInt(s.color.slice(5, 7), 16);
+        const lum = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+        return lum > 0.65;
+      }
+      return false;
+    }
+
+    function renderBgPresetGrid() {
+      const grid = document.getElementById('bgPresetGrid');
+      if (!grid) return;
+      grid.innerHTML = BG_PRESETS.map((p) => {
+        const selected = state.bgSettings.mode === 'preset' && state.bgSettings.presetId === p.id;
+        return `
+          <button
+            type="button"
+            onclick="selectBgPreset('${p.id}')"
+            class="group flex flex-col items-center gap-1.5 p-1.5 rounded-xl border transition-all cursor-pointer ${
+              selected
+                ? 'border-indigo-400 bg-indigo-500/15'
+                : 'border-[#2e2e34] bg-[#121215] hover:border-gray-500'
+            }"
+          >
+            <div class="w-full h-9 rounded-lg border border-white/15 shadow-inner" style="background: ${p.preview};"></div>
+            <span class="text-[10px] font-medium ${selected ? 'text-indigo-200 font-bold' : 'text-gray-300'} truncate w-full text-center">${escapeHtml(p.name)}</span>
+          </button>
+        `;
+      }).join('');
+    }
+
+    window.selectBgPreset = function (presetId) {
+      state.bgSettings.mode = 'preset';
+      state.bgSettings.presetId = presetId;
+      saveBgSettings();
+    };
+
+    document.getElementById('customBgColorPicker').addEventListener('input', (e) => {
+      state.bgSettings.mode = 'color';
+      state.bgSettings.color = e.target.value;
+      saveBgSettings();
+    });
+
+    document.getElementById('bgDimmerSlider').addEventListener('input', (e) => {
+      state.bgSettings.dimmer = Number(e.target.value) || 0;
+      saveBgSettings();
+    });
+
+    document.getElementById('bgImageUploadLabel').addEventListener('click', () => {
+      state.ignoreNextVisibilityRedirect = true;
+      setTimeout(() => { state.ignoreNextVisibilityRedirect = false; }, 15000);
+    });
+
+    document.getElementById('bgImageUploadInput').addEventListener('change', (e) => {
+      state.ignoreNextVisibilityRedirect = false;
+      const file = e.target.files && e.target.files[0];
+      if (!file) return;
+
+      const reader = new FileReader();
+      reader.onload = function (ev) {
+        const img = new Image();
+        img.onload = function () {
+          const maxDim = 1400;
+          let w = img.width;
+          let h = img.height;
+          if (w > maxDim || h > maxDim) {
+            if (w > h) {
+              h = Math.round((h * maxDim) / w);
+              w = maxDim;
+            } else {
+              w = Math.round((w * maxDim) / h);
+              h = maxDim;
+            }
+          }
+          const canvas = document.createElement('canvas');
+          canvas.width = w;
+          canvas.height = h;
+          const ctx = canvas.getContext('2d');
+          ctx.drawImage(img, 0, 0, w, h);
+          const compressedDataUrl = canvas.toDataURL('image/jpeg', 0.82);
+
+          state.bgSettings.mode = 'image';
+          state.bgSettings.imageData = compressedDataUrl;
+          saveBgSettings();
+          showToast('背景変更完了', '画像を背景に設定しました', 'success');
+        };
+        img.src = ev.target.result;
+      };
+      reader.readAsDataURL(file);
+      e.target.value = '';
+    });
+
+    document.getElementById('resetBgBtn').addEventListener('click', () => {
+      state.bgSettings = {
+        mode: 'preset',
+        presetId: 'dark',
+        color: '#121215',
+        imageData: '',
+        dimmer: 0
+      };
+      saveBgSettings();
+      showToast('リセット完了', '背景を標準ダークに戻しました', 'info');
+    });
+
+    // ---------------------------------------------------------
+    // 防御モード：https://loilonote.app/_/ への強制リダイレクト実行
+    // ---------------------------------------------------------
+    function forceRedirectToLoilo() {
+      removeMyPresence();
+      clearInterval(state.heartbeatTimer);
+      if (state.noHistoryMode) {
+        purgeLocalHistoryStorage(true);
+      }
+      const overlay = document.getElementById('defenseRedirectOverlay');
+      const textEl = document.getElementById('redirectOverlayText');
+      const linkEl = document.getElementById('redirectOverlayLink');
+      if (textEl) textEl.textContent = 'ロイロノートへ移動しています...';
+      if (linkEl) linkEl.href = DEFENSE_REDIRECT_URL;
+      if (overlay) overlay.classList.remove('hidden');
+      try {
+        window.location.replace(DEFENSE_REDIRECT_URL);
+      } catch (_) {
+        window.location.href = DEFENSE_REDIRECT_URL;
+      }
+    }
+
+    // ---------------------------------------------------------
+    // 日時フォーマット（何月何日・時刻）
+    // ---------------------------------------------------------
+    function formatMonthDayTime(ts = Date.now()) {
+      const d = new Date(ts);
+      const pad = (n) => String(n).padStart(2, '0');
+      return `${d.getMonth() + 1}月${d.getDate()}日 ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+    }
+
+    function formatMonthDayTimeSec(ts = Date.now()) {
+      const d = new Date(ts);
+      const pad = (n) => String(n).padStart(2, '0');
+      return `${d.getMonth() + 1}月${d.getDate()}日 ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+    }
+
+    function formatFullDateDivider(ts = Date.now()) {
+      const d = new Date(ts);
+      return `${d.getFullYear()}年${d.getMonth() + 1}月${d.getDate()}日`;
+    }
+
+    function getDateKey(ts = Date.now()) {
+      const d = new Date(ts);
+      return `${d.getFullYear()}-${d.getMonth() + 1}-${d.getDate()}`;
+    }
+
+    function escapeHtml(str) {
+      return String(str ?? '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+    }
+
+    // ---------------------------------------------------------
+    // クリップボードコピー
+    // ---------------------------------------------------------
+    window.copyText = function (text, label) {
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text).then(() => {
+          showToast('コピー完了', `${label}をクリップボードにコピーしました`, 'success');
+        }).catch(() => fallbackCopy(text, label));
+      } else {
+        fallbackCopy(text, label);
+      }
+    };
+
+    function fallbackCopy(text, label) {
+      const ta = document.createElement('textarea');
+      ta.value = text;
+      document.body.appendChild(ta);
+      ta.select();
+      document.execCommand('copy');
+      ta.remove();
+      showToast('コピー完了', `${label}をクリップボードにコピーしました`, 'success');
+    }
+
+    // ---------------------------------------------------------
+    // トースト通知
+    // ---------------------------------------------------------
+    function showToast(title, message, variant = 'info') {
+      const container = document.getElementById('toastContainer');
+      const toast = document.createElement('div');
+      toast.className = 'toast-enter pointer-events-auto rounded-xl bg-[#1c1c20]/95 backdrop-blur-md border border-[#2e2e34] p-3 shadow-2xl flex items-start gap-2.5';
+
+      const iconColor = variant === 'announcement'
+        ? 'text-indigo-400 bg-indigo-500/15 border-indigo-500/30'
+        : variant === 'success'
+          ? 'text-emerald-400 bg-emerald-500/15 border-emerald-500/30'
+          : 'text-gray-300 bg-[#242429] border-[#2e2e34]';
+
+      toast.innerHTML = `
+        <div class="w-6 h-6 rounded-lg border flex items-center justify-center shrink-0 ${iconColor}">
+          <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+          </svg>
+        </div>
+        <div class="min-w-0 flex-1">
+          <div class="text-[11px] font-bold text-gray-100">${escapeHtml(title)}</div>
+          <div class="text-[11px] text-gray-300 mt-0.5 break-all leading-snug">${escapeHtml(message)}</div>
+        </div>
+      `;
+
+      container.appendChild(toast);
+      setTimeout(() => {
+        toast.style.opacity = '0';
+        toast.style.transform = 'translateX(16px)';
+        toast.style.transition = 'all 0.22s ease';
+        setTimeout(() => toast.remove(), 240);
+      }, 4500);
+    }
+
+    // ---------------------------------------------------------
+    // ストレージ読み書き＆マルチタブ同期
+    // ---------------------------------------------------------
+    function loadJSON(key, fallback) {
+      try {
+        const raw = localStorage.getItem(key);
+        return raw ? JSON.parse(raw) : fallback;
+      } catch (_) {
+        return fallback;
+      }
+    }
+
+    function saveJSON(key, value) {
+      if (state.noHistoryMode && (key === STORAGE_KEYS.MESSAGES || key === STORAGE_KEYS.ENTRY_LOGS)) {
+        if (channel) {
+          channel.postMessage({ type: 'memory_sync', key, value });
+        }
+        return;
+      }
+      try {
+        localStorage.setItem(key, JSON.stringify(value));
+      } catch (_) {}
+      if (channel) {
+        channel.postMessage({ type: 'sync', key });
+      }
+    }
+
+    function syncAllFromStorage(notifyAnnouncement = false) {
+      const prevAnnId = state.latestAnnouncement ? state.latestAnnouncement.id : null;
+      if (!state.noHistoryMode) {
+        state.messages = loadJSON(STORAGE_KEYS.MESSAGES, []);
+        state.entryLogs = loadJSON(STORAGE_KEYS.ENTRY_LOGS, []);
+      }
+      state.latestAnnouncement = loadJSON(STORAGE_KEYS.ANNOUNCEMENT, null);
+      state.globalDefense = loadJSON(STORAGE_KEYS.GLOBAL_DEFENSE, false);
+
+      const isSavedAdmin = state.isAdmin || (() => {
+        try { return localStorage.getItem(STORAGE_KEYS.IS_ADMIN) === 'true'; } catch (_) { return false; }
+      })();
+
+      if (state.globalDefense && !isSavedAdmin) {
+        forceRedirectToLoilo();
+        return;
+      }
+
+      if (notifyAnnouncement && state.latestAnnouncement && state.latestAnnouncement.active && state.latestAnnouncement.id !== prevAnnId) {
+        state.dismissedBannerKey = null;
+        if (state.isLoggedIn) {
+          showToast(`📢 全体通知（${state.latestAnnouncement.senderName}）`, state.latestAnnouncement.text, 'announcement');
+        }
+      }
+
+      refreshActivePresenceList();
+      if (state.isLoggedIn) {
+        markUnreadMessagesAsRead();
+        renderAllRoomUI();
+      }
+    }
+
+    if (channel) {
+      channel.onmessage = (ev) => {
+        if (ev && ev.data && ev.data.type === 'memory_sync') {
+          if (ev.data.key === STORAGE_KEYS.MESSAGES && Array.isArray(ev.data.value)) {
+            state.messages = ev.data.value;
+            if (state.isLoggedIn) renderMessages();
+          }
+          if (ev.data.key === STORAGE_KEYS.ENTRY_LOGS && Array.isArray(ev.data.value)) {
+            state.entryLogs = ev.data.value;
+            if (state.isLoggedIn) renderAdminPanelData();
+          }
+          return;
+        }
+        syncAllFromStorage(true);
+      };
+    }
+    window.addEventListener('storage', () => syncAllFromStorage(true));
+
+    // ---------------------------------------------------------
+    // アクティブ数・メンバー表示管理（全員閲覧可能）
+    // ---------------------------------------------------------
+    function sendHeartbeat() {
+      if (!state.isLoggedIn) return;
+      const map = loadJSON(STORAGE_KEYS.ACTIVE_PRESENCE, {});
+      const now = Date.now();
+      map[SESSION_ID] = {
+        sessionId: SESSION_ID,
+        name: state.userName,
+        isAdmin: state.isAdmin,
+        enteredAt: state.enteredAtLabel,
+        lastSeen: now
+      };
+      Object.keys(map).forEach((sid) => {
+        if (now - (map[sid].lastSeen || 0) > 30000) {
+          delete map[sid];
+        }
+      });
+      saveJSON(STORAGE_KEYS.ACTIVE_PRESENCE, map);
+      refreshActivePresenceList();
+    }
+
+    function removeMyPresence() {
+      const map = loadJSON(STORAGE_KEYS.ACTIVE_PRESENCE, {});
+      if (map[SESSION_ID]) {
+        delete map[SESSION_ID];
+        saveJSON(STORAGE_KEYS.ACTIVE_PRESENCE, map);
+      }
+    }
+
+    function refreshActivePresenceList() {
+      const map = loadJSON(STORAGE_KEYS.ACTIVE_PRESENCE, {});
+      const now = Date.now();
+      const list = Object.values(map).filter((item) => now - (item.lastSeen || 0) <= 30000);
+      list.sort((a, b) => (a.lastSeen || 0) - (b.lastSeen || 0));
+      state.activeMembers = list;
+
+      const count = list.length || (state.isLoggedIn ? 1 : 0);
+      document.getElementById('activeCountNum').textContent = count;
+      document.getElementById('modalActiveCount').textContent = count;
+      renderActiveMembersModal();
+    }
+
+    function renderActiveMembersModal() {
+      const container = document.getElementById('activeMembersList');
+      if (!container) return;
+
+      const members = state.activeMembers.length > 0
+        ? state.activeMembers
+        : (state.isLoggedIn ? [{
+            sessionId: SESSION_ID,
+            name: state.userName,
+            isAdmin: state.isAdmin,
+            enteredAt: state.enteredAtLabel
+          }] : []);
+
+      if (members.length === 0) {
+        container.innerHTML = `<p class="text-xs text-gray-400 text-center py-6">現在アクティブなメンバーはいません</p>`;
+        return;
+      }
+
+      container.innerHTML = members.map((m) => {
+        const isMe = m.sessionId === SESSION_ID;
+        const initial = (m.name || '?').slice(0, 1).toUpperCase();
+        return `
+          <div class="rounded-xl bg-[#121215] border border-[#2e2e34] px-3.5 py-2 flex items-center justify-between gap-3">
+            <div class="flex items-center gap-2.5 min-w-0">
+              <div class="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold shrink-0 border ${
+                m.isAdmin
+                  ? 'bg-indigo-500/20 border-indigo-400/40 text-indigo-200'
+                  : 'bg-[#242429] border-[#2e2e34] text-gray-300'
+              }">
+                ${escapeHtml(initial)}
+              </div>
+              <div class="min-w-0">
+                <div class="flex items-center gap-1.5 flex-wrap">
+                  <span class="text-xs font-bold text-gray-100 truncate">${escapeHtml(m.name)}</span>
+                  ${isMe ? '<span class="text-[10px] px-1.5 py-0.2 rounded bg-emerald-500/15 text-emerald-300 border border-emerald-500/30">あなた</span>' : ''}
+                  ${m.isAdmin
+                    ? '<span class="text-[10px] px-1.5 py-0.2 rounded bg-indigo-500/15 text-indigo-300 border border-indigo-400/30 font-semibold">✓ 公式管理者</span>'
+                    : '<span class="text-[10px] px-1.5 py-0.2 rounded bg-[#242429] text-gray-400 border border-[#2e2e34]">一般</span>'
+                  }
+                </div>
+                <div class="text-[10px] text-gray-400 mt-0.5">入室: ${escapeHtml(m.enteredAt || '')}</div>
+              </div>
+            </div>
+            <div class="shrink-0 text-right">
+              <span class="inline-flex items-center gap-1 text-[11px] font-semibold text-emerald-400">● オンライン</span>
+            </div>
+          </div>
+        `;
+      }).join('');
+    }
+
+    window.addEventListener('beforeunload', () => {
+      removeMyPresence();
+      if (state.noHistoryMode) {
+        purgeLocalHistoryStorage(true);
+      }
+    });
+
+    // ---------------------------------------------------------
+    // 防御モード UI ＆ 全体防御モード切替
+    // ---------------------------------------------------------
+    function updateDefenseUI() {
+      const headerBtn = document.getElementById('headerDefenseBtn');
+      const statusBar = document.getElementById('adminGlobalDefenseStatusBar');
+      const globalBtn = document.getElementById('toggleGlobalDefenseBtn');
+
+      if (state.isAdmin) {
+        headerBtn.classList.remove('hidden');
+        statusBar.classList.toggle('hidden', !state.globalDefense);
+      } else {
+        headerBtn.classList.add('hidden');
+        statusBar.classList.add('hidden');
+      }
+
+      if (globalBtn) {
+        globalBtn.textContent = state.globalDefense
+          ? 'ON（全一般ユーザー強制移動中・クリックで解除）'
+          : 'OFF（クリックでON）';
+        globalBtn.className = state.globalDefense
+          ? 'rounded-xl px-4 py-2 text-xs font-semibold transition-colors cursor-pointer bg-red-500/20 border border-red-400/40 text-red-200'
+          : 'rounded-xl px-4 py-2 text-xs font-semibold transition-colors cursor-pointer bg-[#242429] hover:bg-[#2e2e34] border border-[#3a3a42] text-gray-200';
+      }
+    }
+
+    function toggleGlobalDefense() {
+      if (!state.isAdmin) return;
+      state.globalDefense = !state.globalDefense;
+      saveJSON(STORAGE_KEYS.GLOBAL_DEFENSE, state.globalDefense);
+      updateDefenseUI();
+      if (state.globalDefense) {
+        showToast('🛡️ 全体防御モード ON', '全一般ユーザーを https://loilonote.app/_/ へ強制移動させました', 'announcement');
+      } else {
+        showToast('全体防御モード解除', '全体防御モードをOFFにしました', 'info');
+      }
+    }
+
+    // ---------------------------------------------------------
+    // 既読処理
+    // ---------------------------------------------------------
+    function markUnreadMessagesAsRead() {
+      if (!state.isLoggedIn || document.hidden) return;
+      const msgs = state.noHistoryMode ? [...state.messages] : loadJSON(STORAGE_KEYS.MESSAGES, []);
+      let changed = false;
+      const nowLabel = formatMonthDayTime(Date.now());
+
+      msgs.forEach((m) => {
+        if (!Array.isArray(m.readBy)) m.readBy = [];
+        const already = m.readBy.some((r) => r.name === state.userName);
+        if (!already) {
+          m.readBy.push({ name: state.userName, readAt: nowLabel });
+          changed = true;
+        }
+      });
+
+      if (changed) {
+        state.messages = msgs;
+        saveJSON(STORAGE_KEYS.MESSAGES, msgs);
+      }
+    }
+
+    window.addEventListener('focus', () => {
+      if (state.isLoggedIn) {
+        markUnreadMessagesAsRead();
+        renderMessages();
+      }
+    });
+
+    // ---------------------------------------------------------
+    // 入室ログ記録（履歴に残さない設定がONの場合はスキップ）
+    // ---------------------------------------------------------
+    function recordEntryLog(name, isAdmin, method) {
+      if (state.noHistoryMode || state.skipEntryLog) {
+        return;
+      }
+      const logs = loadJSON(STORAGE_KEYS.ENTRY_LOGS, []);
+      const now = Date.now();
+      logs.unshift({
+        id: 'log_' + now + '_' + Math.random().toString(36).slice(2, 6),
+        name,
+        enteredAt: formatMonthDayTimeSec(now),
+        role: isAdmin ? '公式管理者' : '一般',
+        method
+      });
+      state.entryLogs = logs;
+      saveJSON(STORAGE_KEYS.ENTRY_LOGS, logs);
+    }
+
+    // ---------------------------------------------------------
+    // ログイン画面の表示制御（一度ログインした人は名前の欄を消す）
+    // ---------------------------------------------------------
+    function showLoginScreen() {
+      const isSavedAdmin = (() => {
+        try { return localStorage.getItem(STORAGE_KEYS.IS_ADMIN) === 'true'; } catch (_) { return false; }
+      })();
+      const isGlobalDefenseOn = loadJSON(STORAGE_KEYS.GLOBAL_DEFENSE, false);
+      if (isGlobalDefenseOn && !isSavedAdmin) {
+        forceRedirectToLoilo();
+        return;
+      }
+
+      state.isLoggedIn = false;
+      state.editingNameManually = false;
+
+      const savedName = (() => {
+        if (state.noHistoryMode) return '';
+        try { return localStorage.getItem(STORAGE_KEYS.SAVED_NAME) || ''; } catch (_) { return ''; }
+      })();
+      const returningBanner = document.getElementById('returningUserBanner');
+      const nameWrapper = document.getElementById('nameFieldWrapper');
+      const nameInput = document.getElementById('displayNameInput');
+      const subtitle = document.getElementById('loginSubtitle');
+
+      document.getElementById('loginErrorBox').classList.add('hidden');
+      document.getElementById('loginCodeInput').value = '';
+
+      if (savedName) {
+        returningBanner.classList.remove('hidden');
+        document.getElementById('returningUserNameText').textContent = savedName;
+        nameWrapper.classList.add('hidden');
+        nameInput.required = false;
+        nameInput.value = savedName;
+        subtitle.textContent = 'ログインコードを入力して入室してください';
+        setTimeout(() => document.getElementById('loginCodeInput').focus(), 40);
+      } else {
+        returningBanner.classList.add('hidden');
+        nameWrapper.classList.remove('hidden');
+        nameInput.required = true;
+        nameInput.value = '';
+        subtitle.textContent = '表示名とログインコードを入力して入室してください';
+        setTimeout(() => nameInput.focus(), 40);
+      }
+
+      updateAllSettingsUI();
+      document.getElementById('bootLoader').classList.add('hidden');
+      document.getElementById('mainRoom').classList.add('hidden');
+      document.getElementById('loginScreen').classList.remove('hidden');
+    }
+
+    document.getElementById('changeSavedNameBtn').addEventListener('click', () => {
+      state.editingNameManually = true;
+      document.getElementById('returningUserBanner').classList.add('hidden');
+      document.getElementById('nameFieldWrapper').classList.remove('hidden');
+      const nameInput = document.getElementById('displayNameInput');
+      nameInput.required = true;
+      nameInput.value = '';
+      document.getElementById('loginSubtitle').textContent = '表示名とログインコードを入力して入室してください';
+      nameInput.focus();
+    });
+
+    document.getElementById('toggleLoginCodeBtn').addEventListener('click', function () {
+      const inp = document.getElementById('loginCodeInput');
+      if (inp.type === 'password') {
+        inp.type = 'text';
+        this.textContent = '非表示';
+      } else {
+        inp.type = 'password';
+        this.textContent = '表示';
+      }
+    });
+
+    // ---------------------------------------------------------
+    // ログイン処理＆自動パス
+    // ---------------------------------------------------------
+    function enterRoom(name, isAdmin, entryMethod) {
+      const isGlobalDefenseOn = loadJSON(STORAGE_KEYS.GLOBAL_DEFENSE, false);
+      if (isGlobalDefenseOn && !isAdmin) {
+        forceRedirectToLoilo();
+        return;
+      }
+
+      state.isLoggedIn = true;
+      state.userName = name;
+      state.isAdmin = isAdmin;
+      state.enteredAtLabel = formatMonthDayTime(Date.now());
+      state.dismissedBannerKey = null;
+
+      if (!state.noHistoryMode) {
+        try {
+          localStorage.setItem(STORAGE_KEYS.SAVED_NAME, name);
+          if (isAdmin) {
+            localStorage.setItem(STORAGE_KEYS.IS_ADMIN, 'true');
+          }
+        } catch (_) {}
+      } else {
+        purgeLocalHistoryStorage(true);
+      }
+
+      recordEntryLog(name, isAdmin, entryMethod);
+      syncAllFromStorage(false);
+      sendHeartbeat();
+
+      clearInterval(state.heartbeatTimer);
+      state.heartbeatTimer = setInterval(sendHeartbeat, 5000);
+
+      document.getElementById('bootLoader').classList.add('hidden');
+      document.getElementById('loginScreen').classList.add('hidden');
+      document.getElementById('mainRoom').classList.remove('hidden');
+
+      markUnreadMessagesAsRead();
+      renderAllRoomUI();
+
+      showToast(
+        '📌 ログイン時のお知らせ',
+        `ポータルURL: ${PORTAL_URL} / パスワード: ${LOGIN_CODE}`,
+        'announcement'
+      );
+    }
+
+    document.getElementById('loginForm').addEventListener('submit', (e) => {
+      e.preventDefault();
+      const savedName = (() => {
+        if (state.noHistoryMode) return '';
+        try { return localStorage.getItem(STORAGE_KEYS.SAVED_NAME) || ''; } catch (_) { return ''; }
+      })();
+      const rawName = (!state.editingNameManually && savedName)
+        ? savedName
+        : document.getElementById('displayNameInput').value.trim();
+      const code = document.getElementById('loginCodeInput').value;
+      const errBox = document.getElementById('loginErrorBox');
+      const errText = document.getElementById('loginErrorText');
+      const card = document.getElementById('loginCard');
+
+      if (!rawName) {
+        errText.textContent = '表示名を入力してください。';
+        errBox.classList.remove('hidden');
+        return;
+      }
+
+      if (code !== LOGIN_CODE) {
+        errText.textContent = 'ログインコードが正しくありません。';
+        errBox.classList.remove('hidden');
+        card.classList.remove('animate-shake');
+        void card.offsetWidth;
+        card.classList.add('animate-shake');
+        return;
+      }
+
+      errBox.classList.add('hidden');
+      const wasAdmin = (() => {
+        try { return localStorage.getItem(STORAGE_KEYS.IS_ADMIN) === 'true'; } catch (_) { return false; }
+      })();
+      enterRoom(rawName, wasAdmin, '通常ログイン');
+    });
+
+    // ---------------------------------------------------------
+    // UI 全体描画
+    // ---------------------------------------------------------
+    function renderAllRoomUI() {
+      updateHeaderUI();
+      updateAllSettingsUI();
+      updateDefenseUI();
+      renderBanner();
+      renderMessages();
+      renderAdminPanelData();
+      refreshActivePresenceList();
+    }
+
+    function updateHeaderUI() {
+      document.getElementById('headerUserName').textContent = state.userName;
+      const roleBadge = document.getElementById('headerRoleBadge');
+      const adminBtn = document.getElementById('adminActionBtn');
+      const adminBtnIcon = document.getElementById('adminBtnIcon');
+      const adminBtnLabel = document.getElementById('adminBtnLabel');
+
+      if (state.isAdmin) {
+        roleBadge.textContent = '✓ 公式管理者';
+        roleBadge.className = 'inline-flex items-center px-1.5 py-0.2 rounded text-[10px] font-semibold bg-indigo-500/15 border border-indigo-400/35 text-indigo-300';
+
+        adminBtn.className = 'rounded-lg px-2.5 sm:px-3 py-1.5 text-[11px] sm:text-xs font-semibold transition-all flex items-center gap-1.5 cursor-pointer bg-indigo-600/20 hover:bg-indigo-600/30 border border-indigo-500/45 text-indigo-200 shadow-sm';
+        adminBtnIcon.innerHTML = `<path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />`;
+        adminBtnIcon.className = 'w-3.5 h-3.5 text-indigo-300';
+        adminBtnLabel.textContent = '管理者パネル';
+      } else {
+        roleBadge.textContent = '一般';
+        roleBadge.className = 'inline-flex items-center px-1.5 py-0.2 rounded text-[10px] font-medium bg-[#242429] border border-[#2e2e34] text-gray-300';
+
+        adminBtn.className = 'rounded-lg px-2.5 sm:px-3 py-1.5 text-[11px] sm:text-xs font-semibold transition-all flex items-center gap-1.5 cursor-pointer bg-[#242429] hover:bg-[#2c2c33] border border-[#2e2e34] text-gray-200';
+        adminBtnIcon.innerHTML = `<path stroke-linecap="round" stroke-linejoin="round" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z" />`;
+        adminBtnIcon.className = 'w-3.5 h-3.5 text-gray-400';
+        adminBtnLabel.textContent = '管理者コード';
+      }
+    }
+
+    function renderBanner() {
+      const banner = document.getElementById('globalBanner');
+      const badgeEl = document.getElementById('bannerBadgeText');
+      const metaEl = document.getElementById('bannerMeta');
+      const bodyEl = document.getElementById('bannerBody');
+      const ann = state.latestAnnouncement;
+
+      if (ann && ann.active && ann.text) {
+        const key = 'ann_' + ann.id;
+        if (state.dismissedBannerKey === key) {
+          banner.classList.add('hidden');
+          return;
+        }
+        badgeEl.textContent = '📢 全体通知';
+        metaEl.textContent = `${ann.senderName} • ${ann.createdAt}`;
+        bodyEl.innerHTML = `<span>${escapeHtml(ann.text)}</span>`;
+        banner.classList.remove('hidden');
+        return;
+      }
+
+      const defaultKey = 'login_portal_notice';
+      if (state.dismissedBannerKey === defaultKey) {
+        banner.classList.add('hidden');
+        return;
+      }
+      badgeEl.textContent = '📌 お知らせ';
+      metaEl.textContent = '';
+      bodyEl.innerHTML = `<span>Googleポータル: <a href="${PORTAL_URL}" target="_blank" rel="noopener noreferrer" class="text-indigo-200 underline hover:text-white">開く</a> ／ PW: <code class="px-1 py-0.2 rounded bg-indigo-500/25 font-mono">${LOGIN_CODE}</code></span>`;
+      banner.classList.remove('hidden');
+    }
+
+    document.getElementById('dismissBannerBtn').addEventListener('click', () => {
+      const ann = state.latestAnnouncement;
+      state.dismissedBannerKey = (ann && ann.active && ann.text) ? ('ann_' + ann.id) : 'login_portal_notice';
+      document.getElementById('globalBanner').classList.add('hidden');
+    });
+
+    // ---------------------------------------------------------
+    // コンパクトで読みやすいメッセージ描画
+    // ---------------------------------------------------------
+    function renderMessages() {
+      const list = document.getElementById('messageList');
+      const timeline = document.getElementById('messageTimeline');
+      const isLightBg = isLightBackgroundActive();
+
+      if (state.messages.length === 0) {
+        list.innerHTML = `<div class="rounded-xl bg-[#1c1c20]/90 backdrop-blur-md border border-[#2e2e34] px-4 py-5 text-center"><p class="text-xs font-medium text-gray-300">まだメッセージがありません</p><p class="text-[11px] text-gray-500 mt-0.5">最初のメッセージを送信して会話を始めましょう</p></div>`;
+        return;
+      }
+
+      const sorted = [...state.messages].sort((a, b) => (a.timestamp || 0) - (b.timestamp || 0));
+      let lastDateKey = '';
+
+      list.innerHTML = sorted.map((msg) => {
+        const ts = msg.timestamp || Date.now();
+        const dateKey = getDateKey(ts);
+        let dividerHtml = '';
+        if (dateKey !== lastDateKey) {
+          lastDateKey = dateKey;
+          dividerHtml = `<div class="flex items-center justify-center my-2"><span class="px-2.5 py-0.5 rounded-full bg-[#1c1c20]/90 backdrop-blur-xs border border-[#2e2e34] text-[10px] font-semibold text-gray-300">${escapeHtml(formatFullDateDivider(ts))}</span></div>`;
+        }
+
+        const cleanText = String(msg.text ?? '').trim();
+        const readBy = Array.isArray(msg.readBy) ? msg.readBy : [];
+        const readBadgeHtml = `<button type="button" onclick="openReadReceiptsModal('${escapeHtml(msg.id)}')" class="text-[10px] font-medium px-1.5 py-0.2 rounded-full cursor-pointer transition-colors ${isLightBg ? 'text-indigo-700 bg-white/85 hover:bg-white border border-indigo-200' : 'text-indigo-300 bg-[#1c1c20]/85 hover:bg-[#242429] border border-indigo-400/30'}" title="タップして既読メンバーを確認">既読 ${readBy.length}</button>`;
+
+        const deleteBtnHtml = state.isAdmin
+          ? `<button type="button" onclick="deleteSingleMessage('${escapeHtml(msg.id)}')" class="text-[10px] px-1.5 py-0.2 rounded cursor-pointer transition-colors ${isLightBg ? 'text-red-600 bg-white/80 hover:bg-white' : 'text-red-300/85 hover:text-red-200 hover:bg-red-500/15'}" title="削除">削除</button>`
+          : '';
+
+        if (msg.type === 'system_announcement') {
+          return `${dividerHtml}<div class="rounded-xl bg-indigo-950/85 backdrop-blur-md border border-indigo-500/40 px-3 py-2 fade-in"><div class="flex items-center justify-between gap-2 mb-1 flex-wrap"><div class="flex items-center gap-1.5"><span class="text-[10px] font-bold px-1.5 py-0.2 rounded bg-indigo-500/30 text-indigo-200 border border-indigo-400/30">📢 全体通知</span><span class="text-[11px] font-semibold text-indigo-200">${escapeHtml(msg.senderName)}</span></div><div class="flex items-center gap-1.5"><span class="text-[10px] text-gray-300 font-mono">${escapeHtml(msg.dateTimeLabel || formatMonthDayTime(ts))}</span>${readBadgeHtml}${deleteBtnHtml}</div></div><p class="text-xs text-gray-100 whitespace-pre-wrap break-words leading-snug">${escapeHtml(cleanText)}</p></div>`;
+        }
+
+        const isMe = msg.senderName === state.userName;
+        const isSenderAdmin = msg.senderRole === '公式管理者';
+        const initial = (msg.senderName || '?').slice(0, 1).toUpperCase();
+
+        const senderNameClass = isLightBg
+          ? 'text-[11px] font-bold text-slate-800 bg-white/75 px-1.5 py-0.2 rounded'
+          : 'text-[11px] font-semibold text-gray-200 drop-shadow-xs';
+
+        const timeTextClass = isLightBg
+          ? 'text-[10px] font-medium text-slate-700 bg-white/75 px-1.5 py-0.2 rounded'
+          : 'text-[10px] text-gray-300 drop-shadow-xs';
+
+        const bubbleClass = isMe
+          ? 'bg-indigo-600 text-white rounded-2xl rounded-tr-xs'
+          : 'bg-[#1c1c20]/95 backdrop-blur-md border border-[#2e2e34] text-gray-100 rounded-2xl rounded-tl-xs';
+
+        const adminBadgeHtml = isSenderAdmin
+          ? `<span class="text-[9px] px-1.5 py-0.2 rounded font-semibold ${isLightBg ? 'bg-indigo-600 text-white' : 'bg-indigo-500/25 border border-indigo-400/35 text-indigo-200'}">✓ 公式管理者</span>`
+          : '';
+
+        return `${dividerHtml}<div class="flex items-start gap-2 ${isMe ? 'flex-row-reverse' : ''} fade-in"><div class="w-7 h-7 rounded-full flex items-center justify-center text-[11px] font-bold shrink-0 border mt-0.5 ${isSenderAdmin ? 'bg-indigo-600/30 border-indigo-400/50 text-indigo-100' : 'bg-[#242429]/95 border-[#2e2e34] text-gray-200'}">${escapeHtml(initial)}</div><div class="max-w-[78%] sm:max-w-[68%] flex flex-col ${isMe ? 'items-end' : 'items-start'}"><div class="flex items-center gap-1.5 mb-0.5 flex-wrap ${isMe ? 'justify-end' : ''}"><span class="${senderNameClass}">${escapeHtml(msg.senderName)}</span>${adminBadgeHtml}</div><div class="w-fit max-w-full px-3 py-1.5 text-[13px] leading-[1.45] whitespace-pre-wrap break-words shadow-sm ${bubbleClass}">${escapeHtml(cleanText)}</div><div class="flex items-center gap-1.5 mt-0.5 flex-wrap ${isMe ? 'justify-end' : ''}"><span class="${timeTextClass}">${escapeHtml(msg.dateTimeLabel || formatMonthDayTime(ts))}</span>${readBadgeHtml}${deleteBtnHtml}</div></div></div>`;
+      }).join('');
+
+      timeline.scrollTop = timeline.scrollHeight;
+    }
+
+    // ---------------------------------------------------------
+    // メッセージ送信＆削除
+    // ---------------------------------------------------------
+    const messageInput = document.getElementById('messageInput');
+    messageInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' && !e.shiftKey) {
+        e.preventDefault();
+        document.getElementById('messageForm').dispatchEvent(new Event('submit'));
+      }
+    });
+
+    document.getElementById('messageForm').addEventListener('submit', (e) => {
+      e.preventDefault();
+      if (!state.isLoggedIn) return;
+      const text = messageInput.value.trim();
+      if (!text) return;
+
+      const now = Date.now();
+      const msgs = state.noHistoryMode ? [...state.messages] : loadJSON(STORAGE_KEYS.MESSAGES, []);
+      msgs.push({
+        id: 'msg_' + now + '_' + Math.random().toString(36).slice(2, 6),
+        type: 'chat',
+        senderName: state.userName,
+        senderRole: state.isAdmin ? '公式管理者' : '一般',
+        text,
+        timestamp: now,
+        dateTimeLabel: formatMonthDayTime(now),
+        readBy: [{ name: state.userName, readAt: formatMonthDayTime(now) }]
+      });
+
+      state.messages = msgs;
+      saveJSON(STORAGE_KEYS.MESSAGES, msgs);
+      messageInput.value = '';
+      renderMessages();
+    });
+
+    window.deleteSingleMessage = function (msgId) {
+      if (!state.isAdmin) return;
+      const baseMsgs = state.noHistoryMode ? state.messages : loadJSON(STORAGE_KEYS.MESSAGES, []);
+      const msgs = baseMsgs.filter((m) => m.id !== msgId);
+      state.messages = msgs;
+      saveJSON(STORAGE_KEYS.MESSAGES, msgs);
+      renderMessages();
+      showToast('削除完了', 'メッセージを削除しました', 'info');
+    };
+
+    document.getElementById('deleteAllMessagesBtn').addEventListener('click', () => {
+      if (!state.isAdmin) return;
+      if (!confirm('タイムラインのトーク履歴をすべて削除しますか？')) return;
+      state.messages = [];
+      saveJSON(STORAGE_KEYS.MESSAGES, []);
+      renderMessages();
+      showToast('一括削除完了', 'トーク履歴をすべて削除しました', 'info');
+    });
+
+    // ---------------------------------------------------------
+    // 既読メンバー一覧モーダル
+    // ---------------------------------------------------------
+    window.openReadReceiptsModal = function (msgId) {
+      const msg = state.messages.find((m) => m.id === msgId);
+      if (!msg) return;
+      const readBy = Array.isArray(msg.readBy) ? msg.readBy : [];
+      document.getElementById('readModalCount').textContent = readBy.length;
+      const list = document.getElementById('readReceiptsList');
+
+      if (readBy.length === 0) {
+        list.innerHTML = `<p class="text-xs text-gray-400 text-center py-4">まだ既読はありません</p>`;
+      } else {
+        list.innerHTML = readBy.map((r) => `
+          <div class="rounded-xl bg-[#121215] border border-[#2e2e34] px-3 py-2 flex items-center justify-between text-xs">
+            <span class="font-semibold text-gray-100">${escapeHtml(r.name)}</span>
+            <span class="text-[11px] text-gray-400">${escapeHtml(r.readAt || '')}</span>
+          </div>
+        `).join('');
+      }
+      document.getElementById('readReceiptsModal').classList.remove('hidden');
+    };
+
+    document.getElementById('closeReadModalBtn').addEventListener('click', () => {
+      document.getElementById('readReceiptsModal').classList.add('hidden');
+    });
+
+    // ---------------------------------------------------------
+    // アクティブメンバー一覧モーダル開閉（全員閲覧可能）
+    // ---------------------------------------------------------
+    document.getElementById('activeUsersBtn').addEventListener('click', () => {
+      refreshActivePresenceList();
+      document.getElementById('activeMembersModal').classList.remove('hidden');
+    });
+    document.getElementById('closeActiveMembersModalBtn').addEventListener('click', () => {
+      document.getElementById('activeMembersModal').classList.add('hidden');
+    });
+    document.getElementById('closeActiveMembersFooterBtn').addEventListener('click', () => {
+      document.getElementById('activeMembersModal').classList.add('hidden');
+    });
+
+    // ---------------------------------------------------------
+    // 管理者コード認証＆公式管理者パネル
+    // ---------------------------------------------------------
+    document.getElementById('adminActionBtn').addEventListener('click', () => {
+      if (state.isAdmin) {
+        renderAdminPanelData();
+        document.getElementById('adminPanelModal').classList.remove('hidden');
+      } else {
+        document.getElementById('adminCodeInput').value = '';
+        document.getElementById('adminCodeErrorBox').classList.add('hidden');
+        document.getElementById('adminCodeModal').classList.remove('hidden');
+        setTimeout(() => document.getElementById('adminCodeInput').focus(), 40);
+      }
+    });
+
+    document.getElementById('closeAdminCodeModalBtn').addEventListener('click', () => {
+      document.getElementById('adminCodeModal').classList.add('hidden');
+    });
+    document.getElementById('cancelAdminCodeBtn').addEventListener('click', () => {
+      document.getElementById('adminCodeModal').classList.add('hidden');
+    });
+
+    document.getElementById('adminVerifyForm').addEventListener('submit', (e) => {
+      e.preventDefault();
+      const val = document.getElementById('adminCodeInput').value;
+      const errBox = document.getElementById('adminCodeErrorBox');
+
+      if (val !== ADMIN_CODE) {
+        errBox.classList.remove('hidden');
+        return;
+      }
+
+      errBox.classList.add('hidden');
+      state.isAdmin = true;
+      if (!state.noHistoryMode) {
+        try { localStorage.setItem(STORAGE_KEYS.IS_ADMIN, 'true'); } catch (_) {}
+      }
+      recordEntryLog(state.userName, true, '管理者コード認証');
+      sendHeartbeat();
+
+      document.getElementById('adminCodeModal').classList.add('hidden');
+      renderAllRoomUI();
+      showToast('✓ 公式管理者認証完了', '公式管理者権限が付与されました', 'success');
+    });
+
+    // 防御モード関連ボタンイベント（https://loilonote.app/_/ 強制移動）
+    document.getElementById('headerDefenseBtn').addEventListener('click', forceRedirectToLoilo);
+    document.getElementById('triggerPersonalRedirectBtn').addEventListener('click', forceRedirectToLoilo);
+    document.getElementById('quickRedirectSelfBtn').addEventListener('click', forceRedirectToLoilo);
+    document.getElementById('toggleGlobalDefenseBtn').addEventListener('click', toggleGlobalDefense);
+    document.getElementById('quickDisableGlobalDefenseBtn').addEventListener('click', () => {
+      if (state.globalDefense) toggleGlobalDefense();
+    });
+
+    // 管理者パネル内タブ切替
+    function switchAdminTab(tab) {
+      const tabs = {
+        defense: { btn: 'tabDefenseBtn', sec: 'panelSectionDefense' },
+        broadcast: { btn: 'tabBroadcastBtn', sec: 'panelSectionBroadcast' },
+        logs: { btn: 'tabLogsBtn', sec: 'panelSectionLogs' }
+      };
+      Object.keys(tabs).forEach((k) => {
+        const active = k === tab;
+        document.getElementById(tabs[k].sec).classList.toggle('hidden', !active);
+        document.getElementById(tabs[k].btn).className = active
+          ? 'px-3.5 py-2 text-xs font-semibold border-b-2 border-indigo-500 text-indigo-300 whitespace-nowrap cursor-pointer'
+          : 'px-3.5 py-2 text-xs font-semibold border-b-2 border-transparent text-gray-400 hover:text-gray-200 whitespace-nowrap cursor-pointer';
+      });
+    }
+
+    document.getElementById('tabDefenseBtn').addEventListener('click', () => switchAdminTab('defense'));
+    document.getElementById('tabBroadcastBtn').addEventListener('click', () => switchAdminTab('broadcast'));
+    document.getElementById('tabLogsBtn').addEventListener('click', () => switchAdminTab('logs'));
+
+    document.getElementById('closeAdminPanelBtn').addEventListener('click', () => {
+      document.getElementById('adminPanelModal').classList.add('hidden');
+    });
+    document.getElementById('closeAdminPanelFooterBtn').addEventListener('click', () => {
+      document.getElementById('adminPanelModal').classList.add('hidden');
+    });
+
+    // 全体通知送信＆解除
+    document.getElementById('sendAnnouncementBtn').addEventListener('click', () => {
+      if (!state.isAdmin) return;
+      const input = document.getElementById('announcementInput');
+      const text = input.value.trim();
+      if (!text) return;
+
+      const now = Date.now();
+      const ann = {
+        id: 'ann_' + now,
+        active: true,
+        text,
+        senderName: state.userName,
+        createdAt: formatMonthDayTime(now)
+      };
+      state.latestAnnouncement = ann;
+      state.dismissedBannerKey = null;
+      saveJSON(STORAGE_KEYS.ANNOUNCEMENT, ann);
+
+      const msgs = state.noHistoryMode ? [...state.messages] : loadJSON(STORAGE_KEYS.MESSAGES, []);
+      msgs.push({
+        id: 'msg_' + now + '_' + Math.random().toString(36).slice(2, 6),
+        type: 'system_announcement',
+        senderName: state.userName,
+        senderRole: '公式管理者',
+        text,
+        timestamp: now,
+        dateTimeLabel: formatMonthDayTime(now),
+        readBy: [{ name: state.userName, readAt: formatMonthDayTime(now) }]
+      });
+      state.messages = msgs;
+      saveJSON(STORAGE_KEYS.MESSAGES, msgs);
+
+      input.value = '';
+      renderBanner();
+      renderMessages();
+      renderAdminPanelData();
+      showToast(`📢 全体通知を配信しました`, text, 'announcement');
+    });
+
+    document.getElementById('clearGlobalBannerBtn').addEventListener('click', () => {
+      if (!state.isAdmin) return;
+      state.latestAnnouncement = null;
+      state.dismissedBannerKey = null;
+      saveJSON(STORAGE_KEYS.ANNOUNCEMENT, null);
+      renderBanner();
+      renderAdminPanelData();
+      showToast('全体通知を解除', 'カスタム全体通知を解除しました', 'info');
+    });
+
+    function renderAdminPanelData() {
+      const ann = state.latestAnnouncement;
+      const preview = document.getElementById('currentActiveAnnouncementPreview');
+      if (ann && ann.active && ann.text) {
+        preview.textContent = `「${ann.text}」（送信者: ${ann.senderName} / ${ann.createdAt}）`;
+      } else {
+        preview.textContent = '現在アクティブなカスタム全体通知はありません';
+      }
+
+      const logs = state.entryLogs || [];
+      document.getElementById('logCountBadge').textContent = logs.length;
+      document.getElementById('statTotalEntries').textContent = logs.length;
+      document.getElementById('statAdminEntries').textContent = logs.filter((l) => l.role === '公式管理者').length;
+      document.getElementById('statAutoPassEntries').textContent = logs.filter((l) => l.method === '管理者自動パス').length;
+
+      const tbody = document.getElementById('entryLogsTableBody');
+      if (logs.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="4" class="py-5 px-4 text-center text-gray-500">入室ログはまだありません</td></tr>`;
+        return;
+      }
+
+      tbody.innerHTML = logs.map((log) => `
+        <tr class="hover:bg-[#1a1a20]">
+          <td class="py-2.5 px-3.5 font-semibold text-gray-100 whitespace-nowrap">${escapeHtml(log.name)}</td>
+          <td class="py-2.5 px-3.5 font-mono text-gray-300 whitespace-nowrap">${escapeHtml(log.enteredAt)}</td>
+          <td class="py-2.5 px-3.5 whitespace-nowrap">
+            ${log.role === '公式管理者'
+              ? '<span class="px-2 py-0.5 rounded bg-indigo-500/15 border border-indigo-400/30 text-indigo-300 font-semibold">✓ 公式管理者</span>'
+              : '<span class="px-2 py-0.5 rounded bg-[#242429] border border-[#2e2e34] text-gray-300">一般</span>'
+            }
+          </td>
+          <td class="py-2.5 px-3.5 text-gray-300 whitespace-nowrap">${escapeHtml(log.method)}</td>
+        </tr>
+      `).join('');
+    }
+
+    // 管理者状態をリセット（ログアウト）
+    document.getElementById('resetAdminStateBtn').addEventListener('click', () => {
+      if (!confirm('管理者状態をリセットしてログアウトしますか？（次回ログイン時は通常ログインからやり直しになります）')) return;
+      removeMyPresence();
+      clearInterval(state.heartbeatTimer);
+      try { localStorage.removeItem(STORAGE_KEYS.IS_ADMIN); } catch (_) {}
+      state.isAdmin = false;
+      document.getElementById('adminPanelModal').classList.add('hidden');
+      showLoginScreen();
+    });
+
+    // ---------------------------------------------------------
+    // 起動処理（ステルス転送データ復元・設定読み込み・自動パス判定）
+    // ---------------------------------------------------------
+    (function init() {
+      loadTabRedirectSetting();
+      loadNoHistorySettings();
+      loadBgSettings();
+
+      // ステルス(about:blank)窓からの引き継ぎデータがある場合
+      if (window.__STEALTH_TRANSFER__) {
+        const t = window.__STEALTH_TRANSFER__;
+        state.noHistoryMode = true;
+        state.skipEntryLog = true;
+        if (typeof t.tabSwitchRedirect === 'boolean') {
+          state.tabSwitchRedirect = t.tabSwitchRedirect;
+        }
+        if (Array.isArray(t.messages)) state.messages = t.messages;
+        if (Array.isArray(t.entryLogs)) state.entryLogs = t.entryLogs;
+        if (t.bgSettings) {
+          state.bgSettings = { ...state.bgSettings, ...t.bgSettings };
+          applyBgSettings();
+        }
+        updateAllSettingsUI();
+        if (t.isLoggedIn && t.userName) {
+          enterRoom(t.userName, Boolean(t.isAdmin), 'ステルス入室');
+          return;
+        }
+      }
+
+      const isSavedAdmin = (() => {
+        try { return localStorage.getItem(STORAGE_KEYS.IS_ADMIN) === 'true'; } catch (_) { return false; }
+      })();
+      const savedName = (() => {
+        if (state.noHistoryMode) return '';
+        try { return localStorage.getItem(STORAGE_KEYS.SAVED_NAME) || ''; } catch (_) { return ''; }
+      })();
+      const isGlobalDefenseOn = loadJSON(STORAGE_KEYS.GLOBAL_DEFENSE, false);
+
+      if (isGlobalDefenseOn && !isSavedAdmin) {
+        forceRedirectToLoilo();
+        return;
+      }
+
+      if (isSavedAdmin && savedName) {
+        enterRoom(savedName, true, '管理者自動パス');
+      } else {
+        showLoginScreen();
+      }
+    })();
+  </script>
+</body>
+</html>
